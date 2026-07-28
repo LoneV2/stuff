@@ -1,3 +1,4 @@
+-- Made by hzyl
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Workspace = game:GetService("Workspace")
@@ -401,8 +402,8 @@ local function setupPlayer(player)
 
         local nameBillboard = Instance.new("BillboardGui")
         nameBillboard.Name = "ESPNameBillboard"
-        nameBillboard.Size = UDim2.new(0, 120, 0, 16)
-        nameBillboard.StudsOffset = Vector3.new(0, 3, 0)
+        nameBillboard.Size = UDim2.new(0, 180, 0, 26)
+        nameBillboard.StudsOffset = Vector3.new(0, 3.4, 0)
         nameBillboard.AlwaysOnTop = true
         nameBillboard.Enabled = Settings.PlayerESP and Settings.PlayerBillboardEnabled
         nameBillboard.Parent = humanoidRootPart
@@ -411,15 +412,15 @@ local function setupPlayer(player)
         nameLabel.Size = UDim2.new(1, 0, 1, 0)
         nameLabel.BackgroundTransparency = 1
         nameLabel.TextStrokeTransparency = 0
+        nameLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
         nameLabel.Font = Enum.Font.FredokaOne
-        nameLabel.TextSize = 10
+        nameLabel.TextSize = 16
         nameLabel.TextXAlignment = Enum.TextXAlignment.Center
 
+        nameLabel.Text = player.Name
         if isKiller(player) then
-            nameLabel.Text = "[KILLER] " .. player.Name
             nameLabel.TextColor3 = Color3.fromRGB(255, 60, 60)
         else
-            nameLabel.Text = player.Name
             nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
         end
         nameLabel.Parent = nameBillboard
@@ -445,11 +446,10 @@ local function setupPlayer(player)
 
         local teamConn = player:GetPropertyChangedSignal("Team"):Connect(function()
             updateColor()
+            nameLabel.Text = player.Name
             if isKiller(player) then
-                nameLabel.Text = "[KILLER] " .. player.Name
                 nameLabel.TextColor3 = Color3.fromRGB(255, 60, 60)
             else
-                nameLabel.Text = player.Name
                 nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
             end
             refreshInfoTab()
@@ -478,7 +478,7 @@ Players.PlayerRemoving:Connect(function(player)
     refreshInfoTab()
 end)
 
--- Generator setup logic
+-- Generator Setup Logic (Event-Driven)
 local function removeGeneratorESP(generator)
     if activeGenerators[generator] then
         local data = activeGenerators[generator]
@@ -592,28 +592,38 @@ local function setupGenerator(generator)
     end)
 end
 
+-- Initial One-Time Scan
 for _, item in ipairs(Workspace:GetDescendants()) do
     if item:IsA("Model") and (item.Name == "Generator" or item.Name:lower():find("generator")) then
         setupGenerator(item)
     end
 end
+
+-- Zero-Cost Event Listeners for Round Respawns
 Workspace.DescendantAdded:Connect(function(item)
     if item:IsA("Model") and (item.Name == "Generator" or item.Name:lower():find("generator")) then
         setupGenerator(item)
     end
 end)
+
 Workspace.DescendantRemoving:Connect(function(item)
     if activeGenerators[item] then removeGeneratorESP(item) end
 end)
 
--- Skillcheck logic
-local promptGui = PlayerGui:WaitForChild("SkillCheckPromptGui", 5)
-if promptGui then
-    local check = promptGui:WaitForChild("Check", 5)
-    local line = check and check:WaitForChild("Line", 5)
-    local goal = check and check:WaitForChild("Goal", 5)
+-- Pure Event-Driven SkillCheck Listener
+local boundPrompts = {}
 
-    if check and line and goal then
+local function setupSkillCheckGui(promptGui)
+    if not promptGui or boundPrompts[promptGui] then return end
+    boundPrompts[promptGui] = true
+
+    task.spawn(function()
+        local check = promptGui:WaitForChild("Check", 10)
+        local line = check and check:WaitForChild("Line", 10)
+        local goal = check and check:WaitForChild("Goal", 10)
+
+        if not (check and line and goal) then return end
+
         local handledThisPrompt = false
 
         promptGui:GetPropertyChangedSignal("Enabled"):Connect(function()
@@ -628,7 +638,14 @@ if promptGui then
             end
         end)
 
-        RunService.RenderStepped:Connect(function()
+        local renderConn
+        renderConn = RunService.RenderStepped:Connect(function()
+            if not promptGui.Parent then
+                if renderConn then renderConn:Disconnect() end
+                boundPrompts[promptGui] = nil
+                return
+            end
+
             if check.Visible and Settings.AutoSkillCheck then
                 if isKingScourgeActive() then
                     if not handledThisPrompt then
@@ -655,18 +672,31 @@ if promptGui then
                         task.wait(0.02)
                         VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Space, false, game)
 
-                        if skillResultRemote then
+                        local genRemotesNow = ReplicatedStorage:FindFirstChild("Remotes") and ReplicatedStorage.Remotes:FindFirstChild("Generator")
+                        local currentSkillRemote = genRemotesNow and genRemotesNow:FindFirstChild("SkillCheckResultEvent") or skillResultRemote
+                        if currentSkillRemote then
                             pcall(function()
-                                skillResultRemote:FireServer("success", 1)
+                                currentSkillRemote:FireServer("success", 1)
                             end)
                         end
                     end
                 end
             end
         end)
-    end
+    end)
 end
 
+-- Bind existing & future SkillCheck GUIs via direct event listening (0% idle CPU)
+local existingPrompt = PlayerGui:FindFirstChild("SkillCheckPromptGui")
+if existingPrompt then setupSkillCheckGui(existingPrompt) end
+
+PlayerGui.ChildAdded:Connect(function(child)
+    if child.Name == "SkillCheckPromptGui" or child.Name:lower():find("skillcheck") then
+        setupSkillCheckGui(child)
+    end
+end)
+
+-- Unstick Watchdog
 task.spawn(function()
     while task.wait(0.5) do
         if localPlayer.Character then
