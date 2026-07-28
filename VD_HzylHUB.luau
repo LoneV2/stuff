@@ -1,5 +1,4 @@
--- Made by hzyl
-local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+-- Made by hzyl (GUI-less Ultra-Fast Edition)
 
 local Workspace = game:GetService("Workspace")
 local RunService = game:GetService("RunService")
@@ -14,14 +13,7 @@ local PlayerGui = localPlayer:WaitForChild("PlayerGui")
 local genRemotes = ReplicatedStorage:FindFirstChild("Remotes") and ReplicatedStorage.Remotes:FindFirstChild("Generator")
 local skillResultRemote = genRemotes and genRemotes:FindFirstChild("SkillCheckResultEvent")
 
-local origLighting = {
-    Ambient = Lighting.Ambient,
-    OutdoorAmbient = Lighting.OutdoorAmbient,
-    Brightness = Lighting.Brightness,
-    GlobalShadows = Lighting.GlobalShadows,
-    FogEnd = Lighting.FogEnd
-}
-
+-- Configured Headless Settings (All Auto Active, Fullbright Excluded)
 local Settings = {
     GenESP = true,
     GenHighlightEnabled = true,
@@ -32,34 +24,10 @@ local Settings = {
     PlayerESP = true,
     PlayerHighlightEnabled = true,
     PlayerBillboardEnabled = true,
-    Fullbright = false,
 
     AutoSkillCheck = true,
     SkillCheckMode = "great"
 }
-
--- Lighting Manager
-local function updateLighting()
-    if Settings.Fullbright then
-        Lighting.Ambient = Color3.fromRGB(180, 180, 180)
-        Lighting.OutdoorAmbient = Color3.fromRGB(180, 180, 180)
-        Lighting.Brightness = 2.0
-        Lighting.GlobalShadows = false
-        Lighting.FogEnd = 1000000
-    else
-        Lighting.Ambient = origLighting.Ambient
-        Lighting.OutdoorAmbient = origLighting.OutdoorAmbient
-        Lighting.Brightness = origLighting.Brightness
-        Lighting.GlobalShadows = origLighting.GlobalShadows
-        Lighting.FogEnd = origLighting.FogEnd
-    end
-end
-
-Lighting.Changed:Connect(function()
-    if Settings.Fullbright then
-        updateLighting()
-    end
-end)
 
 local function isKiller(player)
     if not player then return false end
@@ -158,215 +126,8 @@ local function getPlayerOutlineColor(player, humanoid)
     return getHealthColor(humanoid)
 end
 
-local function forceUnstickCharacter()
-    if localPlayer.Character then
-        local char = localPlayer.Character
-        local hum = char:FindFirstChildOfClass("Humanoid")
-        if hum then
-            hum.WalkSpeed = 16
-            hum.JumpPower = 0
-            hum.JumpHeight = 0
-            hum.PlatformStand = false
-            hum.AutoRotate = true
-        end
-        for _, child in ipairs(char:GetChildren()) do
-            if child:IsA("AlignPosition") or child:IsA("AlignOrientation") or child:IsA("WeldConstraint") then
-                if child.Name:lower():find("repair") or child.Name:lower():find("gen") or child.Name:lower():find("skill") then
-                    child:Destroy()
-                end
-            end
-        end
-    end
-end
-
 local activeGenerators = {}
 local activePlayers = {}
-
-local function updateAllGeneratorsESP()
-    for _, data in pairs(activeGenerators) do
-        if data.Highlight and data.Highlight.Parent then
-            data.Highlight.Enabled = Settings.GenESP and Settings.GenHighlightEnabled
-        end
-        if data.Billboard and data.Billboard.Parent then
-            data.Billboard.Enabled = Settings.GenESP and Settings.GenBillboardEnabled
-        end
-    end
-end
-
-local function updateAllPlayersESP()
-    for _, data in pairs(activePlayers) do
-        if data.Highlight and data.Highlight.Parent then
-            data.Highlight.Enabled = Settings.PlayerESP and Settings.PlayerHighlightEnabled
-        end
-        if data.Billboard and data.Billboard.Parent then
-            data.Billboard.Enabled = Settings.PlayerESP and Settings.PlayerBillboardEnabled
-        end
-    end
-end
-
--- Rayfield Window Setup
-local Window = Rayfield:CreateWindow({
-    Name = "Hzyl VD",
-    LoadingTitle = "Hzyl HUB",
-    LoadingSubtitle = "vibecoded using Gemini",
-    ConfigurationSaving = {
-        Enabled = false
-    },
-    Discord = {
-        Enabled = false
-    },
-    KeySystem = false
-})
-
-local GenTab = Window:CreateTab("Generators", 4483362458)
-local PlayerTab = Window:CreateTab("Players", 4483362458)
-local InfoTab = Window:CreateTab("Info", 4483362458)
-
--- Generator Tab Elements
-GenTab:CreateToggle({
-    Name = "Master Generator ESP",
-    CurrentValue = Settings.GenESP,
-    Flag = "GenESP",
-    Callback = function(Value)
-        Settings.GenESP = Value
-        updateAllGeneratorsESP()
-    end,
-})
-
-GenTab:CreateToggle({
-    Name = "Generator Highlights",
-    CurrentValue = Settings.GenHighlightEnabled,
-    Flag = "GenHighlightEnabled",
-    Callback = function(Value)
-        Settings.GenHighlightEnabled = Value
-        updateAllGeneratorsESP()
-    end,
-})
-
-GenTab:CreateToggle({
-    Name = "Generator Progress",
-    CurrentValue = Settings.GenBillboardEnabled,
-    Flag = "GenBillboardEnabled",
-    Callback = function(Value)
-        Settings.GenBillboardEnabled = Value
-        updateAllGeneratorsESP()
-    end,
-})
-
-GenTab:CreateToggle({
-    Name = "Auto SkillCheck",
-    CurrentValue = Settings.AutoSkillCheck,
-    Flag = "AutoSkillCheck",
-    Callback = function(Value)
-        Settings.AutoSkillCheck = Value
-    end,
-})
-
-GenTab:CreateToggle({
-    Name = "Perfect Skillcheck (+1% Progress)",
-    CurrentValue = (Settings.SkillCheckMode == "great"),
-    Flag = "SkillCheckMode",
-    Callback = function(Value)
-        Settings.SkillCheckMode = Value and "great" or "good"
-    end,
-})
-
-GenTab:CreateButton({
-    Name = "UNSTICK CHARACTER",
-    Callback = function()
-        forceUnstickCharacter()
-    end,
-})
-
--- Players Tab Elements
-PlayerTab:CreateToggle({
-    Name = "Master Player ESP",
-    CurrentValue = Settings.PlayerESP,
-    Flag = "PlayerESP",
-    Callback = function(Value)
-        Settings.PlayerESP = Value
-        updateAllPlayersESP()
-    end,
-})
-
-PlayerTab:CreateToggle({
-    Name = "Player Highlights",
-    CurrentValue = Settings.PlayerHighlightEnabled,
-    Flag = "PlayerHighlightEnabled",
-    Callback = function(Value)
-        Settings.PlayerHighlightEnabled = Value
-        updateAllPlayersESP()
-    end,
-})
-
-PlayerTab:CreateToggle({
-    Name = "Player Names",
-    CurrentValue = Settings.PlayerBillboardEnabled,
-    Flag = "PlayerBillboardEnabled",
-    Callback = function(Value)
-        Settings.PlayerBillboardEnabled = Value
-        updateAllPlayersESP()
-    end,
-})
-
-PlayerTab:CreateToggle({
-    Name = "Soft Fullbright",
-    CurrentValue = Settings.Fullbright,
-    Flag = "Fullbright",
-    Callback = function(Value)
-        Settings.Fullbright = Value
-        updateLighting()
-    end,
-})
-
--- Info Tab Section & Dynamic Single-Paragraph Update
-InfoTab:CreateSection("ACTIVE LOADOUTS")
-
-local InfoParagraph = InfoTab:CreateParagraph({
-    Title = "MATCH STATS",
-    Content = "Loading active match data..."
-})
-
-InfoTab:CreateSection("CREDITS")
-InfoTab:CreateParagraph({
-    Title = "⚡ VIBECODED USING GEMINI",
-    Content = "hzyl HUB for Violence District"
-})
-
-local function refreshInfoTab()
-    local textLines = {}
-
-    for _, p in ipairs(Players:GetPlayers()) do
-        local isKill = isKiller(p)
-        local itemStr = p:GetAttribute("EquippedItem") or "None"
-        
-        if itemStr == "None" and p.Character then
-            local tool = p.Character:FindFirstChildOfClass("Tool")
-            if tool then
-                itemStr = tool.Name
-            end
-        end
-
-        local killerStr = p:GetAttribute("SelectedKiller") or (isKill and "King Scourge" or "Standard")
-        local lvl = p:GetAttribute("Level") or 1
-
-        local pName = string.upper(p.Name)
-        if isKill then
-            table.insert(textLines, "🔴 " .. pName .. "\n   • SELECTED: " .. string.upper(tostring(killerStr)) .. "\n   • LEVEL: " .. tostring(lvl))
-        else
-            table.insert(textLines, "🔵 " .. pName .. "\n   • ITEM: " .. string.upper(tostring(itemStr)) .. "\n   • LEVEL: " .. tostring(lvl))
-        end
-    end
-
-    InfoParagraph:Set({
-        Title = "CURRENT MATCH LOADOUTS",
-        Content = table.concat(textLines, "\n\n")
-    })
-end
-
-refreshInfoTab()
-Players.PlayerAdded:Connect(refreshInfoTab)
-Players.PlayerRemoving:Connect(refreshInfoTab)
 
 -- Event-Driven Player ESP Logic
 local function removePlayerESP(player)
@@ -452,7 +213,6 @@ local function setupPlayer(player)
             else
                 nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
             end
-            refreshInfoTab()
         end)
         table.insert(data.Conns, teamConn)
 
@@ -475,7 +235,6 @@ Players.PlayerAdded:Connect(setupPlayer)
 
 Players.PlayerRemoving:Connect(function(player)
     removePlayerESP(player)
-    refreshInfoTab()
 end)
 
 -- Generator Setup Logic (Event-Driven)
@@ -592,14 +351,14 @@ local function setupGenerator(generator)
     end)
 end
 
--- Initial One-Time Scan
+-- Initial Generator Registration
 for _, item in ipairs(Workspace:GetDescendants()) do
     if item:IsA("Model") and (item.Name == "Generator" or item.Name:lower():find("generator")) then
         setupGenerator(item)
     end
 end
 
--- Zero-Cost Event Listeners for Round Respawns
+-- Event Listeners for Generator Spawns
 Workspace.DescendantAdded:Connect(function(item)
     if item:IsA("Model") and (item.Name == "Generator" or item.Name:lower():find("generator")) then
         setupGenerator(item)
@@ -610,7 +369,7 @@ Workspace.DescendantRemoving:Connect(function(item)
     if activeGenerators[item] then removeGeneratorESP(item) end
 end)
 
--- Pure Event-Driven SkillCheck Listener
+-- Ultra-Fast Instant-Trigger SkillCheck Engine
 local boundPrompts = {}
 
 local function setupSkillCheckGui(promptGui)
@@ -618,24 +377,88 @@ local function setupSkillCheckGui(promptGui)
     boundPrompts[promptGui] = true
 
     task.spawn(function()
-        local check = promptGui:WaitForChild("Check", 10)
-        local line = check and check:WaitForChild("Line", 10)
-        local goal = check and check:WaitForChild("Goal", 10)
+        local check = promptGui:FindFirstChild("Check") or promptGui:WaitForChild("Check", 10)
+        local line = check and (check:FindFirstChild("Line") or check:WaitForChild("Line", 10))
+        local goal = check and (check:FindFirstChild("Goal") or check:WaitForChild("Goal", 10))
 
         if not (check and line and goal) then return end
 
         local handledThisPrompt = false
 
-        promptGui:GetPropertyChangedSignal("Enabled"):Connect(function()
-            if not promptGui.Enabled then
-                handledThisPrompt = false
+        local function resetPromptState()
+            handledThisPrompt = false
+        end
+
+        local function sendServerSkillSuccess()
+            local genRemotesNow = ReplicatedStorage:FindFirstChild("Remotes") and ReplicatedStorage.Remotes:FindFirstChild("Generator")
+            local currentSkillRemote = genRemotesNow and genRemotesNow:FindFirstChild("SkillCheckResultEvent") or skillResultRemote
+            if currentSkillRemote then
+                pcall(function()
+                    currentSkillRemote:FireServer("success", 1)
+                end)
             end
+        end
+
+        local function processInstantCheck()
+            if not (check.Visible and promptGui.Enabled and Settings.AutoSkillCheck) then
+                handledThisPrompt = false
+                return
+            end
+
+            if handledThisPrompt then return end
+
+            if isKingScourgeActive() then
+                local lineRot = line.AbsoluteRotation % 360
+                local goalRot = goal.AbsoluteRotation % 360
+                local targetAngle = (goalRot + (Settings.SkillCheckMode == "great" and 5 or 12)) % 360
+
+                local diff = math.abs((lineRot - targetAngle + 180) % 360 - 180)
+
+                if diff <= 28 then
+                    handledThisPrompt = true
+                    
+                    line.Rotation = (goal.Rotation + ((Settings.SkillCheckMode == "great") and 5 or 12))
+                    
+                    VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Space, false, game)
+                    task.wait(0.025)
+                    VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Space, false, game)
+                    
+                    sendServerSkillSuccess()
+                    task.delay(0.2, resetPromptState)
+                end
+            else
+                handledThisPrompt = true
+                local offset = (Settings.SkillCheckMode == "great") and 109 or 130
+                line.Rotation = (goal.Rotation + offset)
+
+                VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Space, false, game)
+                task.wait(0.025)
+                VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Space, false, game)
+
+                sendServerSkillSuccess()
+                task.delay(0.2, resetPromptState)
+            end
+        end
+
+        -- Direct Instant Trigger on Event Signal + RenderStepped Fallback
+        promptGui:GetPropertyChangedSignal("Enabled"):Connect(function()
+            resetPromptState()
+            processInstantCheck()
         end)
 
         check:GetPropertyChangedSignal("Visible"):Connect(function()
-            if not check.Visible then
-                handledThisPrompt = false
-            end
+            resetPromptState()
+            processInstantCheck()
+        end)
+
+        goal:GetPropertyChangedSignal("Rotation"):Connect(function()
+            resetPromptState()
+            processInstantCheck()
+        end)
+
+        check:GetPropertyChangedSignal("Rotation"):Connect(function()
+            resetPromptState()
+            processInstantCheck()
         end)
 
         local renderConn
@@ -645,65 +468,19 @@ local function setupSkillCheckGui(promptGui)
                 boundPrompts[promptGui] = nil
                 return
             end
-
-            if check.Visible and Settings.AutoSkillCheck then
-                if isKingScourgeActive() then
-                    if not handledThisPrompt then
-                        local lineRot = line.AbsoluteRotation % 360
-                        local goalRot = goal.AbsoluteRotation % 360
-                        local targetAngle = (goalRot + (Settings.SkillCheckMode == "great" and 5 or 12)) % 360
-
-                        local diff = math.abs((lineRot - targetAngle + 180) % 360 - 180)
-
-                        if diff <= 16 then
-                            handledThisPrompt = true
-                            VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Space, false, game)
-                            task.wait(0.015)
-                            VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Space, false, game)
-                        end
-                    end
-                else
-                    if not handledThisPrompt then
-                        handledThisPrompt = true
-                        local offset = (Settings.SkillCheckMode == "great") and 109 or 130
-                        line.Rotation = (goal.Rotation + offset)
-
-                        VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Space, false, game)
-                        task.wait(0.02)
-                        VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Space, false, game)
-
-                        local genRemotesNow = ReplicatedStorage:FindFirstChild("Remotes") and ReplicatedStorage.Remotes:FindFirstChild("Generator")
-                        local currentSkillRemote = genRemotesNow and genRemotesNow:FindFirstChild("SkillCheckResultEvent") or skillResultRemote
-                        if currentSkillRemote then
-                            pcall(function()
-                                currentSkillRemote:FireServer("success", 1)
-                            end)
-                        end
-                    end
-                end
-            end
+            processInstantCheck()
         end)
+
+        processInstantCheck()
     end)
 end
 
--- Bind existing & future SkillCheck GUIs via direct event listening (0% idle CPU)
+-- Bind existing & future SkillCheck GUIs
 local existingPrompt = PlayerGui:FindFirstChild("SkillCheckPromptGui")
 if existingPrompt then setupSkillCheckGui(existingPrompt) end
 
 PlayerGui.ChildAdded:Connect(function(child)
     if child.Name == "SkillCheckPromptGui" or child.Name:lower():find("skillcheck") then
         setupSkillCheckGui(child)
-    end
-end)
-
--- Unstick Watchdog
-task.spawn(function()
-    while task.wait(0.5) do
-        if localPlayer.Character then
-            local hum = localPlayer.Character:FindFirstChildOfClass("Humanoid")
-            if hum and hum.WalkSpeed == 0 then
-                forceUnstickCharacter()
-            end
-        end
     end
 end)
