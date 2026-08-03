@@ -1,0 +1,916 @@
+--[[
+    Vyperia Aimbot + ESP (Powered by VibeUI)
+    Dynamic Player Detection Update
+--]]
+
+local __lt = (function()
+	local rootEnv = _G or {};
+	local globalEnv = (getgenv and getgenv()) or rootEnv;
+	local sharedEnv = rawget(rootEnv, "shared");
+	local cacheHost = type(sharedEnv) == "table" and sharedEnv or (type(globalEnv) == "table" and globalEnv or nil);
+	if cacheHost then
+		local cached = rawget(cacheHost, "__lt_service_resolver");
+		if type(cached) == "table" then
+			return cached;
+		end;
+	end;
+	local loader = loadstring or load;
+	if type(loader) ~= "function" then
+		error("Service resolver loader unavailable");
+	end;
+	local resolver = loader(game:HttpGet("https://ltseverydayyou.github.io/ServiceResolver.luau"), "@ServiceResolver.luau");
+	if type(resolver) ~= "function" then
+		error("Service resolver failed to compile");
+	end;
+	local loaded = resolver();
+	if type(loaded) ~= "table" then
+		error("Service resolver failed to load");
+	end;
+	if cacheHost then
+		cacheHost.__lt_service_resolver = loaded;
+	end;
+	return loaded;
+end)();
+
+local __NAUIProtector = (function()
+	local globalEnv = (getgenv and getgenv()) or _G or {};
+	local sharedEnv = rawget(_G, "shared");
+	local cacheHost = type(sharedEnv) == "table" and sharedEnv or (type(globalEnv) == "table" and globalEnv or nil);
+	if cacheHost then
+		local cached = rawget(cacheHost, "__lt_ui_protector");
+		if type(cached) == "table" then
+			return cached;
+		end;
+	end;
+	local loader = loadstring or load;
+	if type(loader) ~= "function" then
+		return nil;
+	end;
+	local okSource, source = pcall(function()
+		return game:HttpGet("https://ltseverydayyou.github.io/UIprotector.luau");
+	end);
+	if not okSource or type(source) ~= "string" or source == "" then
+		return nil;
+	end;
+	local chunk = loader(source, "@UIprotector.luau");
+	if type(chunk) ~= "function" then
+		return nil;
+	end;
+	local okLoaded, loaded = pcall(chunk);
+	if okLoaded and type(loaded) == "table" then
+		if cacheHost then
+			cacheHost.__lt_ui_protector = loaded;
+		end;
+		return loaded;
+	end;
+	return nil;
+end)();
+
+local __NAOriginalGetHui = gethui;
+local gethui = function()
+	if __NAUIProtector and type(__NAUIProtector.huiGrabber) == "function" then
+		local ok, ui = pcall(__NAUIProtector.huiGrabber);
+		if ok and typeof(ui) == "Instance" then
+			return ui;
+		end;
+	end;
+	if type(__NAOriginalGetHui) == "function" then
+		local ok, ui = pcall(__NAOriginalGetHui);
+		if ok then
+			return ui;
+		end;
+	end;
+	return nil;
+end;
+
+local _G = (getgenv and getgenv()) or _G or {};
+if type(_G.__vyperiaAimbotCleanup) == "function" then
+	pcall(_G.__vyperiaAimbotCleanup);
+end;
+_G.__vyperiaAimbotCleanup = nil;
+
+local conns = {};
+local function svc(n)
+	local R = cloneref or function(r) return r; end;
+	return __lt.cs(n, R);
+end;
+
+local Players = svc("Players");
+local RunService = svc("RunService");
+local UIS = svc("UserInputService");
+local TS = svc("TweenService");
+local CAS = svc("ContextActionService");
+local LS = svc("LocalizationService");
+local MPS = svc("MarketplaceService");
+local HS = svc("HttpService");
+local GS = svc("GuiService");
+
+local uiRoot = gethui and gethui() or (svc("CoreGui") or Players.LocalPlayer:WaitForChild("PlayerGui"));
+local plr = Players.LocalPlayer;
+local cam = workspace.CurrentCamera;
+local ms = plr:GetMouse();
+local mode = "FFA";
+local espMap = {};
+local lockCamLoop = nil;
+
+_G.__vyperiaLockOpt = type(_G.__vyperiaLockOpt) == "table" and _G.__vyperiaLockOpt or {};
+local VLO = _G.__vyperiaLockOpt;
+VLO.aimOrigin = {};
+VLO.input = {};
+VLO.input.gamepadButtons = {
+	ButtonA = true, ButtonB = true, ButtonX = true, ButtonY = true,
+	ButtonL1 = true, ButtonR1 = true, ButtonL2 = true, ButtonR2 = true,
+	ButtonL3 = true, ButtonR3 = true, ButtonStart = true, ButtonSelect = true,
+	DPadUp = true, DPadDown = true, DPadLeft = true, DPadRight = true
+};
+VLO.input.gamepadAnalogButtons = { ButtonL2 = true, ButtonR2 = true };
+VLO.input.activeMode = "Unknown";
+VLO.input.activeGamepad = nil;
+
+VLO.input.isGamepadInputType = function(inputType)
+	if typeof(inputType) ~= "EnumItem" then return false; end;
+	local name = inputType.Name;
+	return type(name) == "string" and name:match("^Gamepad[1-8]$") ~= nil;
+end;
+VLO.input.isGamepadKeyCode = function(keyCode)
+	return typeof(keyCode) == "EnumItem" and VLO.input.gamepadButtons[keyCode.Name] == true;
+end;
+VLO.input.getModeFromInputType = function(inputType)
+	if VLO.input.isGamepadInputType(inputType) then return "Gamepad"; end;
+	if inputType == Enum.UserInputType.Touch then return "Touch"; end;
+	if inputType == Enum.UserInputType.Keyboard or inputType == Enum.UserInputType.MouseButton1 or inputType == Enum.UserInputType.MouseButton2 or inputType == Enum.UserInputType.MouseButton3 or inputType == Enum.UserInputType.MouseMovement or inputType == Enum.UserInputType.MouseWheel then
+		return "KeyboardAndMouse";
+	end;
+	return nil;
+end;
+VLO.input.setActiveMode = function(m, gamepadType)
+	if m ~= "Gamepad" and m ~= "Touch" and m ~= "KeyboardAndMouse" then return false; end;
+	if m == "Gamepad" and VLO.input.isGamepadInputType(gamepadType) then VLO.input.activeGamepad = gamepadType; end;
+	local changed = VLO.input.activeMode ~= m;
+	VLO.input.activeMode = m;
+	return changed;
+end;
+VLO.input.noteInput = function(input)
+	if not input then return nil; end;
+	if VLO.input.isGamepadKeyCode(input.KeyCode) or VLO.input.isGamepadInputType(input.UserInputType) then
+		VLO.input.setActiveMode("Gamepad", input.UserInputType);
+		return "Gamepad";
+	end;
+	local m = VLO.input.getModeFromInputType(input.UserInputType);
+	if m then VLO.input.setActiveMode(m, input.UserInputType); end;
+	return m;
+end;
+VLO.input.usesGamepadAim = function()
+	if VLO.input.activeMode == "Gamepad" then return true; end;
+	local preferred = false;
+	pcall(function() preferred = UIS.PreferredInput == Enum.PreferredInput.Gamepad; end);
+	return preferred;
+end;
+
+VLO.deathWatch = type(VLO.deathWatch) == "table" and VLO.deathWatch or {};
+VLO.scanGap = 0;
+VLO.partGap = 0;
+VLO.aliveGap = 0;
+
+local rng = Random.new();
+local trackedPlayers = {};
+local plrIdx = {};
+local plrChars = {};
+local charOwner = {};
+local plrModelMark = setmetatable({}, { __mode = "k" });
+local plrConns = {};
+
+local function newRandomAimCache() return setmetatable({}, { __mode = "k" }); end;
+local randomAimCache = newRandomAimCache();
+
+local function setTrackedCharacter(pp, ch)
+	local old = plrChars[pp];
+	if old and charOwner[old] == pp then charOwner[old] = nil; end;
+	plrChars[pp] = ch;
+	if ch then charOwner[ch] = pp; plrModelMark[ch] = pp; end;
+end;
+
+local function untrackPlayer(pp)
+	if not pp then return; end;
+	setTrackedCharacter(pp, nil);
+	if plrConns[pp] then
+		for _, c in plrConns[pp] do
+			if typeof(c) == "RBXScriptConnection" and c.Connected then c:Disconnect(); end;
+		end;
+		plrConns[pp] = nil;
+	end;
+	local idx = plrIdx[pp];
+	if not idx then return; end;
+	local last = trackedPlayers[#trackedPlayers];
+	trackedPlayers[idx] = last;
+	trackedPlayers[#trackedPlayers] = nil;
+	plrIdx[pp] = nil;
+	if last and last ~= pp then plrIdx[last] = idx; end;
+end;
+
+local function trackPlayer(pp)
+	if not pp or plrIdx[pp] then return; end;
+	trackedPlayers[#trackedPlayers + 1] = pp;
+	plrIdx[pp] = #trackedPlayers;
+	setTrackedCharacter(pp, pp.Character);
+
+	plrConns[pp] = plrConns[pp] or {};
+	local c1 = pp.CharacterAdded:Connect(function(ch)
+		setTrackedCharacter(pp, ch);
+		if _G.espEnabled then updateESP(); end;
+	end);
+	local c2 = pp.CharacterRemoving:Connect(function()
+		setTrackedCharacter(pp, nil);
+	end);
+	table.insert(plrConns[pp], c1);
+	table.insert(plrConns[pp], c2);
+end;
+
+local function rebuildPlrs()
+	for pp in pairs(plrConns) do untrackPlayer(pp); end;
+	table.clear(trackedPlayers); table.clear(plrIdx); table.clear(plrChars); table.clear(charOwner); table.clear(plrModelMark);
+	for _, pp in Players:GetPlayers() do trackPlayer(pp); end;
+end;
+
+table.insert(conns, Players.PlayerAdded:Connect(function(pp)
+	trackPlayer(pp);
+	if _G.espEnabled then updateESP(); end;
+end));
+
+table.insert(conns, Players.PlayerRemoving:Connect(function(pp)
+	untrackPlayer(pp);
+	espDetach(pp);
+end));
+
+local function getPlrs()
+	local currentList = Players:GetPlayers();
+	if #currentList ~= #trackedPlayers then
+		for _, pp in currentList do
+			if not plrIdx[pp] then trackPlayer(pp); end;
+		end;
+	end;
+	return trackedPlayers;
+end;
+
+local function getPlrFromCh(ch)
+	if not ch then return nil; end;
+	local found = charOwner[ch] or plrModelMark[ch];
+	if found then return found; end;
+	found = Players:GetPlayerFromCharacter(ch);
+	if found then
+		setTrackedCharacter(found, ch);
+		return found;
+	end;
+	return nil;
+end;
+
+local npc = {
+	owner = tostring(os.clock()) .. ":" .. tostring(math.random(1, 1000000000)),
+	roots = { "HumanoidRootPart", "UpperTorso", "LowerTorso", "Torso", "Head" }
+};
+function npc.safe(c) if c then pcall(function() c:Disconnect(); end); end; end;
+function npc.player(model)
+	if not model or not model:IsA("Model") then return false; end;
+	if plrModelMark[model] or getPlrFromCh(model) then return true; end;
+	local ok, owner = pcall(function() return Players:GetPlayerFromCharacter(model); end);
+	if ok and owner then return true; end;
+	for _, pp in getPlrs() do
+		local ch = pp.Character;
+		if ch and (model == ch or model:IsDescendantOf(ch) or ch:IsDescendantOf(model)) then return true; end;
+	end;
+	return false;
+end;
+function npc.cand(model)
+	if not model or not model:IsA("Model") or not model.Parent or not model:IsDescendantOf(workspace) then return false; end;
+	local hum = model:FindFirstChildOfClass("Humanoid");
+	if not hum or hum.Parent == nil or npc.player(model) then return false; end;
+	return true;
+end;
+function npc.hum(model, rec)
+	if rec and rec.hum and rec.hum.Parent == model and rec.hum:IsA("Humanoid") then return rec.hum; end;
+	local hum = model and model:FindFirstChildOfClass("Humanoid");
+	if rec then rec.hum = hum; end;
+	return hum;
+end;
+function npc.root(model, rec)
+	if rec and rec.root and rec.root.Parent and rec.root:IsA("BasePart") and rec.root:IsDescendantOf(model) then return rec.root; end;
+	for i = 1, #npc.roots do
+		local p = model:FindFirstChild(npc.roots[i]);
+		if p and p:IsA("BasePart") then if rec then rec.root = p; end; return p; end;
+	end;
+	local pp = model.PrimaryPart;
+	if pp and pp:IsA("BasePart") then if rec then rec.root = pp; end; return pp; end;
+	for _, ch in model:GetChildren() do
+		if ch:IsA("BasePart") then if rec then rec.root = ch; end; return ch; end;
+	end;
+	return nil;
+end;
+function npc.is(model)
+	if not npc.cand(model) then return false; end;
+	local hum = model:FindFirstChildOfClass("Humanoid");
+	if not hum or hum.Parent == nil or hum.Health <= 0 then return false; end;
+	local ok, state = pcall(function() return hum:GetState(); end);
+	if ok and (state == Enum.HumanoidStateType.Dead or state == Enum.HumanoidStateType.None) then return false; end;
+	local anchor = npc.root(model, {});
+	if not anchor or not anchor:IsA("BasePart") then return false; end;
+	return true;
+end;
+function npc.dispose(force)
+	local cache = _G.__vyperiaNpcTargetCache;
+	if type(cache) ~= "table" then return; end;
+	if not force and cache.owner ~= npc.owner then return; end;
+	npc.safe(cache.addConn); npc.safe(cache.remConn);
+	cache.dead = true;
+	if _G.__vyperiaNpcTargetCache == cache then _G.__vyperiaNpcTargetCache = nil; end;
+end;
+function npc.rem(cache, model)
+	if not model or not cache.cands[model] then return; end;
+	local rec = cache.meta[model];
+	if rec then npc.safe(rec.hpConn); npc.safe(rec.diedConn); end;
+	cache.cands[model] = nil; cache.live[model] = nil; cache.meta[model] = nil;
+	local i = cache.idx[model];
+	if i then
+		local n = #cache.order;
+		local last = cache.order[n];
+		cache.order[n] = nil; cache.idx[model] = nil;
+		if last and last ~= model then cache.order[i] = last; cache.idx[last] = i; end;
+	end;
+end;
+function npc.add(cache, model)
+	if cache.dead or not model or cache.cands[model] or not npc.cand(model) then return; end;
+	cache.meta[model] = cache.meta[model] or {};
+	local rec = cache.meta[model];
+	local hum = npc.hum(model, rec);
+	if not hum or hum.Parent == nil or hum.Health <= 0 then cache.meta[model] = nil; return; end;
+	cache.cands[model] = true;
+	cache.order[#cache.order + 1] = model;
+	cache.idx[model] = #cache.order;
+	rec.hpConn = hum.HealthChanged:Connect(function(hp) if tonumber(hp) and hp <= 0 then npc.rem(cache, model); end; end);
+	rec.diedConn = hum.Died:Connect(function() npc.rem(cache, model); end);
+end;
+function npc.make()
+	local old = _G.__vyperiaNpcTargetCache;
+	if type(old) == "table" and old.owner ~= npc.owner then npc.dispose(true); end;
+	local cache = _G.__vyperiaNpcTargetCache;
+	if type(cache) == "table" and cache.init == true and cache.owner == npc.owner and cache.dead ~= true then return cache; end;
+	cache = {
+		init = true, ver = 6, owner = npc.owner, dead = false, stamp = 0, seeded = false, seeding = false, cursor = 1,
+		cands = {}, idx = {}, order = {}, meta = setmetatable({}, { __mode = "k" }), live = {}, list = {}, nextPicks = {}
+	};
+	cache.addConn = workspace.DescendantAdded:Connect(function(inst)
+		if cache.dead then return; end;
+		if inst:IsA("Model") then npc.add(cache, inst); end;
+	end);
+	cache.remConn = workspace.DescendantRemoving:Connect(function(inst)
+		if cache.dead then return; end;
+		if inst:IsA("Model") then npc.rem(cache, inst); end;
+	end);
+	_G.__vyperiaNpcTargetCache = cache;
+	for _, inst in workspace:GetChildren() do if inst:IsA("Model") then npc.add(cache, inst); end; end;
+	return cache;
+end;
+function npc.get()
+	local cache = npc.make();
+	local list = {};
+	for model in cache.cands or {} do
+		if npc.is(model) then table.insert(list, model); end;
+	end;
+	return list;
+end;
+rebuildPlrs();
+
+-- Global State Defaults
+_G.isEnabled = _G.isEnabled or false;
+_G.aimTargetMode = _G.aimTargetMode or "Head";
+_G.espEnabled = _G.espEnabled or false;
+_G.espTransparency = _G.espTransparency or 0.3;
+_G.lockToNearest = _G.lockToNearest or false;
+_G.aliveCheck = _G.aliveCheck or false;
+_G.teamCheck = _G.teamCheck or false;
+_G.ignoreFriends = _G.ignoreFriends or false;
+_G.wallCheck = _G.wallCheck or false;
+_G.aimTween = _G.aimTween or false;
+_G.aimSmooth = _G.aimSmooth or 0.15;
+_G.fovEnabled = _G.fovEnabled or false;
+_G.fovValue = _G.fovValue or 70;
+_G.espShowName = _G.espShowName ~= nil and _G.espShowName or true;
+_G.espShowHP = _G.espShowHP ~= nil and _G.espShowHP or true;
+_G.espShowTeam = _G.espShowTeam ~= nil and _G.espShowTeam or true;
+_G.espTeamColor = _G.espTeamColor ~= nil and _G.espTeamColor or true;
+_G.aimPredict = _G.aimPredict or false;
+_G.aimLead = _G.aimLead or 0.12;
+_G.aimDropCompensation = _G.aimDropCompensation or false;
+_G.aimDropStrength = math.clamp(tonumber(_G.aimDropStrength) or 1, 0, 3);
+_G.aimRadius = _G.aimRadius or 150;
+_G.targetPointMode = _G.targetPointMode or "Center";
+_G.aimPointOffsetX = _G.aimPointOffsetX or 0;
+_G.aimPointOffsetY = _G.aimPointOffsetY or 0;
+_G.fovCircleEnabled = _G.fovCircleEnabled or false;
+_G.fovCircleAlpha = _G.fovCircleAlpha or 0.25;
+_G.fovCircleThickness = _G.fovCircleThickness or 2;
+_G.aimLock = _G.aimLock or false;
+_G.lockKey = _G.lockKey or Enum.KeyCode.E;
+_G.espRenderMode = _G.espRenderMode or "Highlight";
+_G.espAlwaysOnTop = _G.espAlwaysOnTop ~= nil and _G.espAlwaysOnTop or true;
+_G.espShowDistance = _G.espShowDistance or false;
+_G.espTextSize = _G.espTextSize or 14;
+_G.espMaxDistance = _G.espMaxDistance or 2500;
+_G.espOutlineTransparency = _G.espOutlineTransparency or 0.12;
+_G.targetPriorityMode = _G.targetPriorityMode or "Crosshair";
+_G.stickyTarget = _G.stickyTarget ~= nil and _G.stickyTarget or true;
+_G.targetMaxDistance = _G.targetMaxDistance or 2500;
+_G.entMode = _G.entMode or "Player";
+_G.randWtOn = _G.randWtOn or false;
+_G.randomWeightHead = _G.randomWeightHead or 40;
+_G.randomWeightRoot = _G.randomWeightRoot or 20;
+_G.randomWeightUpperTorso = _G.randomWeightUpperTorso or 18;
+_G.randomWeightLowerTorso = _G.randomWeightLowerTorso or 10;
+_G.randomWeightTorso = _G.randomWeightTorso or 12;
+_G.randomWeightOther = _G.randomWeightOther or 5;
+
+local lastLockedCharacter = nil;
+local lastLockedPart = nil;
+
+local OPT = {
+	AIM_TARGET_OPTIONS = { "Head", "Torso", "Root", "Upper Torso", "Lower Torso", "Random" },
+	TARGET_POINT_OPTIONS = { "Cursor", "Center" },
+	TARGET_PRIORITY_OPTIONS = { "Crosshair", "Distance", "Lowest Health" },
+	TARGET_ENTITY_OPTIONS = { "Player", "NPC", "Player/NPC" },
+	ESP_RENDER_OPTIONS = { "Highlight", "BoxHandleAdornment" },
+};
+
+local function getViewport()
+	local c = workspace.CurrentCamera or cam;
+	return c and c.ViewportSize or Vector2.new(1280, 720);
+end;
+
+local function getAimPoint()
+	local vp = getViewport();
+	local base = Vector2.new(vp.X * 0.5, vp.Y * 0.5);
+	if _G.targetPointMode == "Cursor" then
+		local ok, ml = pcall(function() return UIS:GetMouseLocation(); end);
+		if ok and typeof(ml) == "Vector2" then base = ml; end;
+	end;
+	return Vector2.new(math.clamp(base.X + _G.aimPointOffsetX, 0, vp.X), math.clamp(base.Y + _G.aimPointOffsetY, 0, vp.Y));
+end;
+
+VLO.aimOrigin.getAimCameraCFrame = function(targetPosition)
+	local currentCamera = workspace.CurrentCamera or cam;
+	if not currentCamera or typeof(targetPosition) ~= "Vector3" then return currentCamera and currentCamera.CFrame or CFrame.new(); end;
+	local current = currentCamera.CFrame;
+	local origin = current.Position;
+	local targetVector = targetPosition - origin;
+	if targetVector.Magnitude <= 0.0001 then return current; end;
+	local point = getAimPoint();
+	local ray = currentCamera:ViewportPointToRay(point.X, point.Y, 0);
+	local fromDirection = ray.Direction.Unit;
+	local toDirection = targetVector.Unit;
+	local dot = math.clamp(fromDirection:Dot(toDirection), -1, 1);
+	if dot >= 0.999999 then return current; end;
+	local axis = fromDirection:Cross(toDirection);
+	if axis.Magnitude <= 0.000001 then axis = fromDirection:Cross(current.UpVector); end;
+	if axis.Magnitude <= 0.000001 then return current; end;
+	local delta = CFrame.fromAxisAngle(axis.Unit, math.acos(dot));
+	return CFrame.new(origin) * delta * current.Rotation;
+end;
+
+-- Raycast / Line of Sight Check
+local function goodPart(p)
+	if not p or not p:IsA("BasePart") or p.Transparency >= 0.95 or p.CanQuery == false or p.CanCollide == false then return false; end;
+	return true;
+end;
+local function clearLOS(targetPart)
+	if not targetPart then return false; end;
+	local origin = cam.CFrame.Position;
+	local dir = targetPart.Position - origin;
+	local ignore = { plr.Character, targetPart.Parent };
+	local params = RaycastParams.new();
+	params.FilterType = Enum.RaycastFilterType.Blacklist;
+	params.FilterDescendantsInstances = ignore;
+	params.IgnoreWater = true;
+	local maxHops = 10;
+	local curOrigin = origin;
+	local remaining = dir;
+	for _ = 1, maxHops do
+		local r = workspace:Raycast(curOrigin, remaining, params);
+		if not r then return true; end;
+		local hit = r.Instance;
+		if not goodPart(hit) or hit:IsDescendantOf(targetPart.Parent) then
+			table.insert(ignore, hit);
+			params.FilterDescendantsInstances = ignore;
+			curOrigin = r.Position + remaining.Unit * 0.01;
+			remaining = origin + dir - curOrigin;
+		else
+			return false;
+		end;
+	end;
+	return false;
+end;
+
+-- Target Resolution & Body Parts
+local function getHumanoid(m)
+	if not m or not m:IsA("Model") then return nil; end;
+	return m:FindFirstChildOfClass("Humanoid");
+end;
+local function getPart(m, name)
+	if not m or not m:IsA("Model") then return nil; end;
+	local p = m:FindFirstChild(name, true);
+	if p and p:IsA("BasePart") then return p; end;
+	return m:FindFirstChild("HumanoidRootPart") or m:FindFirstChild("Torso") or m:FindFirstChild("Head");
+end;
+
+local function getPredictedAimPos(part)
+	local base = part.Position;
+	local camPos = cam and cam.CFrame.Position or base;
+	local dist = (base - camPos).Magnitude;
+	local lead = math.clamp(tonumber(_G.aimLead) or 0.12, 0, 1);
+	if dist < 14 or lead <= 0 then return base; end;
+	local root = part.Parent and (part.Parent:FindFirstChild("HumanoidRootPart") or part);
+	local vel = root and (root.AssemblyLinearVelocity or root.Velocity) or Vector3.zero;
+	if vel.Magnitude < 1 then return base; end;
+	local distScale = math.clamp((dist - 14) / 170, 0, 1);
+	local off = vel * lead * distScale;
+	return base + off;
+end;
+
+local function getDropCompensatedAimPos(pos)
+	if not _G.aimDropCompensation then return pos; end;
+	local strength = math.clamp(tonumber(_G.aimDropStrength) or 1, 0, 3);
+	if strength <= 0 then return pos; end;
+	local distance = (pos - cam.CFrame.Position).Magnitude;
+	if distance <= 25 then return pos; end;
+	local scaledDistance = (distance - 25) / 100;
+	local rise = scaledDistance * scaledDistance * 1.2 * strength;
+	return pos + Vector3.new(0, math.min(rise, 60), 0);
+end;
+
+local function getAimPos(part)
+	local pos = _G.aimPredict and getPredictedAimPos(part) or part.Position;
+	if _G.aimTargetMode == "Head" and tostring(part.Name):lower():find("head") then
+		pos += Vector3.new(0, 0.2, 0);
+	end;
+	return getDropCompensatedAimPos(pos);
+end;
+
+local function isEnemy(op)
+	if not _G.teamCheck then return true; end;
+	return op.Team ~= nil and plr.Team ~= nil and op.Team ~= plr.Team;
+end;
+
+local function isAlive(ch)
+	if not _G.aliveCheck then return true; end;
+	local hum = getHumanoid(ch);
+	return hum ~= nil and hum.Health > 0;
+end;
+
+local function getScanAimPart(ch)
+	local targetPartName = _G.aimTargetMode;
+	if targetPartName == "Torso" then targetPartName = "UpperTorso"; end;
+	if targetPartName == "Root" then targetPartName = "HumanoidRootPart"; end;
+	local part = getPart(ch, targetPartName);
+	if part and (not _G.wallCheck or clearLOS(part)) then
+		return part;
+	end;
+	return getPart(ch, "HumanoidRootPart") or getPart(ch, "Head");
+end;
+
+local function findTarget()
+	local near = nil;
+	local nearPart = nil;
+	local bestPrimary = math.huge;
+	local mp = getAimPoint();
+	local camPos = cam.CFrame.Position;
+	local maxDistance = math.clamp(tonumber(_G.targetMaxDistance) or 2500, 100, 5000);
+	local maxR = _G.aimRadius or 150;
+
+	local candidates = {};
+	local entityMode = _G.entMode;
+
+	if entityMode == "Player" or entityMode == "Player/NPC" then
+		for _, op in getPlrs() do
+			local char = op.Character;
+			if op ~= plr and char and isEnemy(op) and isAlive(char) then
+				table.insert(candidates, char);
+			end;
+		end;
+	end;
+	if entityMode == "NPC" or entityMode == "Player/NPC" then
+		for _, np in npc.get() do
+			if isAlive(np) then table.insert(candidates, np); end;
+		end;
+	end;
+
+	for _, ch in candidates do
+		local part = getScanAimPart(ch);
+		if part then
+			local scr, on = cam:WorldToViewportPoint(part.Position);
+			if on then
+				local dist = (part.Position - camPos).Magnitude;
+				if dist <= maxDistance then
+					local sdist = (Vector2.new(scr.X, scr.Y) - mp).Magnitude;
+					if _G.targetPriorityMode ~= "Crosshair" or sdist <= maxR then
+						local primary = sdist;
+						if _G.targetPriorityMode == "Distance" or _G.lockToNearest then primary = dist; end;
+						if primary < bestPrimary then
+							bestPrimary = primary;
+							near = ch;
+							nearPart = part;
+						end;
+					end;
+				end;
+			end;
+		end;
+	end;
+
+	lastLockedCharacter = near;
+	lastLockedPart = nearPart;
+	return near, nearPart;
+end;
+
+-- FOV Circle Drawing
+local fovCircleDrawing = nil;
+pcall(function()
+	if Drawing and type(Drawing.new) == "function" then
+		fovCircleDrawing = Drawing.new("Circle");
+		fovCircleDrawing.Visible = false;
+		fovCircleDrawing.Filled = false;
+	end;
+end);
+
+local function updateFOVCircle()
+	if not fovCircleDrawing then return; end;
+	if _G.fovCircleEnabled and _G.isEnabled then
+		local pt = getAimPoint();
+		fovCircleDrawing.Position = pt;
+		fovCircleDrawing.Radius = math.clamp(tonumber(_G.aimRadius) or 150, 10, 500);
+		fovCircleDrawing.Thickness = math.clamp(tonumber(_G.fovCircleThickness) or 2, 1, 8);
+		fovCircleDrawing.Transparency = 1 - math.clamp(tonumber(_G.fovCircleAlpha) or 0.25, 0, 1);
+		fovCircleDrawing.Color = Color3.fromRGB(202, 243, 255);
+		fovCircleDrawing.Visible = true;
+	else
+		fovCircleDrawing.Visible = false;
+	end;
+end;
+
+-- ESP Updates
+local function updateESPText(p)
+	local rec = espMap[p];
+	if not rec or not rec.tx then return; end;
+	local ch = p.Character;
+	local hum = ch and getHumanoid(ch);
+	local lines = {};
+	if _G.espShowName then table.insert(lines, p.Name); end;
+	if _G.espShowHP and hum then table.insert(lines, "HP: " .. math.floor(hum.Health)); end;
+	if _G.espShowTeam and p.Team then table.insert(lines, p.Team.Name); end;
+	if _G.espShowDistance and ch then
+		local part = getPart(ch, "HumanoidRootPart");
+		if part then table.insert(lines, "DIST: " .. math.floor((part.Position - cam.CFrame.Position).Magnitude)); end;
+	end;
+	rec.tx.Text = table.concat(lines, "\n");
+	rec.tx.TextSize = _G.espTextSize or 14;
+	rec.bb.Enabled = #lines > 0;
+end;
+
+local function espDetach(p)
+	local rec = espMap[p];
+	if not rec then return; end;
+	if rec.hi and rec.hi.Parent then rec.hi:Destroy(); end;
+	if rec.bb and rec.bb.Parent then rec.bb:Destroy(); end;
+	espMap[p] = nil;
+end;
+
+local function espAttach(p)
+	if not _G.espEnabled or p == plr or not p.Character then return; end;
+	local ch = p.Character;
+	if _G.teamCheck and not isEnemy(p) then return; end;
+	if _G.aliveCheck and not isAlive(ch) then return; end;
+
+	local rec = espMap[p] or {};
+	if not rec.hi or not rec.hi.Parent then
+		rec.hi = Instance.new("Highlight");
+		rec.hi.Parent = uiRoot;
+	end;
+	rec.hi.Adornee = ch;
+	rec.hi.FillColor = (_G.espTeamColor and p.TeamColor) and p.TeamColor.Color or Color3.fromRGB(117, 94, 255);
+	rec.hi.FillTransparency = _G.espTransparency or 0.3;
+	rec.hi.OutlineTransparency = _G.espOutlineTransparency or 0.12;
+	rec.hi.DepthMode = _G.espAlwaysOnTop and Enum.HighlightDepthMode.AlwaysOnTop or Enum.HighlightDepthMode.Occluded;
+
+	if not rec.bb or not rec.bb.Parent then
+		rec.bb = Instance.new("BillboardGui");
+		rec.bb.Size = UDim2.new(0, 140, 0, 50);
+		rec.bb.StudsOffset = Vector3.new(0, 3, 0);
+		rec.bb.AlwaysOnTop = true;
+		rec.bb.Parent = uiRoot;
+
+		rec.tx = Instance.new("TextLabel", rec.bb);
+		rec.tx.Size = UDim2.new(1, 0, 1, 0);
+		rec.tx.BackgroundTransparency = 1;
+		rec.tx.TextColor3 = Color3.fromRGB(255, 255, 255);
+		rec.tx.TextStrokeTransparency = 0.5;
+		rec.tx.Font = Enum.Font.GothamBold;
+	end;
+	rec.bb.Adornee = getPart(ch, "Head");
+	espMap[p] = rec;
+	updateESPText(p);
+end;
+
+local function updateESP()
+	if not _G.espEnabled then
+		for p in espMap do espDetach(p); end;
+		return;
+	end;
+	for _, p in getPlrs() do
+		if p ~= plr and p.Character then espAttach(p); end;
+	end;
+end;
+
+-- Load VibeUI
+local VibeUI = loadstring(game:HttpGet("https://sirmemegithub.com/RealSlimShady2000/VibeUI/raw/branch/main/VibeUI.luau"))()
+
+local Window = VibeUI:Window({
+	Title   = "Vyperia Aimbot",
+	Size    = UDim2.fromOffset(700, 500),
+	Keybind = Enum.KeyCode.RightAlt,
+	Layout  = "Side",
+});
+
+-- Combat / Aim Tab
+local Combat = Window:Tab({ Name = "Aiming", Columns = 2 })
+local MainAim = Combat:Section({ Name = "Aimbot Settings", Side = 1 })
+
+MainAim:Toggle({
+	Name = "Enabled", Flag = "AimbotEnabled", Default = _G.isEnabled,
+	Callback = function(v) _G.isEnabled = v; end,
+})
+MainAim:Toggle({
+	Name = "Aim Lock", Flag = "AimLock", Default = _G.aimLock,
+	Callback = function(v) _G.aimLock = v; end,
+}):AddKeybind({
+	Flag = "LockKeybind", Default = Enum.KeyCode.E, Mode = "Hold",
+	Callback = function(state) _G.isHoldingLock = state; end
+})
+
+MainAim:Dropdown({
+	Name = "Target Part", Flag = "TargetPart", Items = OPT.AIM_TARGET_OPTIONS, Default = _G.aimTargetMode,
+	Callback = function(v) _G.aimTargetMode = v; end,
+})
+MainAim:Dropdown({
+	Name = "Aim Origin", Flag = "AimOrigin", Items = OPT.TARGET_POINT_OPTIONS, Default = _G.targetPointMode,
+	Callback = function(v) _G.targetPointMode = v; updateFOVCircle(); end,
+})
+MainAim:Slider({
+	Name = "Origin Offset X", Flag = "OffsetX", Min = -500, Max = 500, Default = _G.aimPointOffsetX,
+	Callback = function(v) _G.aimPointOffsetX = v; updateFOVCircle(); end,
+})
+MainAim:Slider({
+	Name = "Origin Offset Y", Flag = "OffsetY", Min = -500, Max = 500, Default = _G.aimPointOffsetY,
+	Callback = function(v) _G.aimPointOffsetY = v; updateFOVCircle(); end,
+})
+
+local SmoothSection = Combat:Section({ Name = "Smoothing & Lead", Side = 2 })
+SmoothSection:Toggle({
+	Name = "Smooth Aim", Flag = "SmoothAim", Default = _G.aimTween,
+	Callback = function(v) _G.aimTween = v; end,
+})
+SmoothSection:Slider({
+	Name = "Smoothness", Flag = "Smoothness", Min = 0.01, Max = 1, Default = _G.aimSmooth, Decimals = 0.01,
+	Callback = function(v) _G.aimSmooth = v; end,
+})
+SmoothSection:Toggle({
+	Name = "Aim Prediction", Flag = "AimPredict", Default = _G.aimPredict,
+	Callback = function(v) _G.aimPredict = v; end,
+})
+SmoothSection:Slider({
+	Name = "Prediction Lead", Flag = "AimLead", Min = 0.01, Max = 1, Default = _G.aimLead, Decimals = 0.01,
+	Callback = function(v) _G.aimLead = v; end,
+})
+SmoothSection:Toggle({
+	Name = "Bullet Drop Comp", Flag = "DropComp", Default = _G.aimDropCompensation,
+	Callback = function(v) _G.aimDropCompensation = v; end,
+})
+SmoothSection:Slider({
+	Name = "Drop Strength", Flag = "DropStrength", Min = 0, Max = 3, Default = _G.aimDropStrength, Decimals = 0.1,
+	Callback = function(v) _G.aimDropStrength = v; end,
+})
+
+-- FOV Section
+local FovSection = Combat:Section({ Name = "Field of View", Side = 1 })
+FovSection:Toggle({
+	Name = "Lock Camera FOV", Flag = "LockFOV", Default = _G.fovEnabled,
+	Callback = function(v) _G.fovEnabled = v; if v and cam then cam.FieldOfView = _G.fovValue; end; end,
+})
+FovSection:Slider({
+	Name = "Camera FOV", Flag = "FOVValue", Min = 1, Max = 120, Default = _G.fovValue,
+	Callback = function(v) _G.fovValue = v; if _G.fovEnabled and cam then cam.FieldOfView = v; end; end,
+})
+FovSection:Toggle({
+	Name = "Show FOV Circle", Flag = "FOVCircle", Default = _G.fovCircleEnabled,
+	Callback = function(v) _G.fovCircleEnabled = v; updateFOVCircle(); end,
+})
+FovSection:Slider({
+	Name = "FOV Radius", Flag = "FOVRadius", Min = 10, Max = 500, Default = _G.aimRadius, Suffix = "px",
+	Callback = function(v) _G.aimRadius = v; updateFOVCircle(); end,
+})
+
+-- Targeting / Filters Tab
+local TargetTab = Window:Tab({ Name = "Targeting", Columns = 2 })
+local Filters = TargetTab:Section({ Name = "Filters & Priority", Side = 1 })
+
+Filters:Dropdown({
+	Name = "Priority Mode", Flag = "PriorityMode", Items = OPT.TARGET_PRIORITY_OPTIONS, Default = _G.targetPriorityMode,
+	Callback = function(v) _G.targetPriorityMode = v; end,
+})
+Filters:Dropdown({
+	Name = "Target Entity", Flag = "TargetEntity", Items = OPT.TARGET_ENTITY_OPTIONS, Default = _G.entMode,
+	Callback = function(v) _G.entMode = v; end,
+})
+Filters:Toggle({
+	Name = "Wall Check", Flag = "WallCheck", Default = _G.wallCheck,
+	Callback = function(v) _G.wallCheck = v; end,
+})
+Filters:Toggle({
+	Name = "Team Check", Flag = "TeamCheck", Default = _G.teamCheck,
+	Callback = function(v) _G.teamCheck = v; updateESP(); end,
+})
+Filters:Toggle({
+	Name = "Ignore Friends", Flag = "IgnoreFriends", Default = _G.ignoreFriends,
+	Callback = function(v) _G.ignoreFriends = v; end,
+})
+Filters:Toggle({
+	Name = "Alive Check", Flag = "AliveCheck", Default = _G.aliveCheck,
+	Callback = function(v) _G.aliveCheck = v; updateESP(); end,
+})
+Filters:Toggle({
+	Name = "Sticky Target", Flag = "StickyTarget", Default = _G.stickyTarget,
+	Callback = function(v) _G.stickyTarget = v; end,
+})
+
+-- Visuals / ESP Tab
+local Visuals = Window:Tab({ Name = "Visuals", Columns = 2 })
+local EspSec = Visuals:Section({ Name = "ESP Settings", Side = 1 })
+
+EspSec:Toggle({
+	Name = "Enable ESP", Flag = "EnableESP", Default = _G.espEnabled,
+	Callback = function(v) _G.espEnabled = v; updateESP(); end,
+})
+EspSec:Dropdown({
+	Name = "Render Mode", Flag = "EspRenderMode", Items = OPT.ESP_RENDER_OPTIONS, Default = _G.espRenderMode,
+	Callback = function(v) _G.espRenderMode = v; updateESP(); end,
+})
+EspSec:Toggle({
+	Name = "Always On Top", Flag = "EspOnTop", Default = _G.espAlwaysOnTop,
+	Callback = function(v) _G.espAlwaysOnTop = v; updateESP(); end,
+})
+EspSec:Toggle({
+	Name = "Show Name", Flag = "EspName", Default = _G.espShowName,
+	Callback = function(v) _G.espShowName = v; updateESP(); end,
+})
+EspSec:Toggle({
+	Name = "Show Health", Flag = "EspHP", Default = _G.espShowHP,
+	Callback = function(v) _G.espShowHP = v; updateESP(); end,
+})
+EspSec:Toggle({
+	Name = "Show Distance", Flag = "EspDist", Default = _G.espShowDistance,
+	Callback = function(v) _G.espShowDistance = v; updateESP(); end,
+})
+EspSec:Slider({
+	Name = "Max Distance", Flag = "EspMaxDist", Min = 100, Max = 5000, Default = _G.espMaxDistance, Suffix = " studs",
+	Callback = function(v) _G.espMaxDistance = v; updateESP(); end,
+})
+
+-- Build Built-In Settings & Theme Page
+VibeUI:CreateSettingsPage(Window)
+
+-- Heartbeat / RenderStepped Engine Loops
+RunService.RenderStepped:Connect(function()
+	if _G.isEnabled then
+		local isHolding = UIS:IsKeyDown(_G.lockKey) or UIS:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) or _G.isHoldingLock;
+		if isHolding or _G.aimLock then
+			local ch, part = findTarget();
+			if ch and part then
+				local aimPos = getAimPos(part);
+				local targetCFrame = VLO.aimOrigin.getAimCameraCFrame(aimPos);
+				if _G.aimTween then
+					local smoothTime = math.clamp(_G.aimSmooth or 0.15, 0.01, 1);
+					cam.CFrame = cam.CFrame:Lerp(targetCFrame, math.clamp(1 / (smoothTime * 60), 0.05, 1));
+				else
+					cam.CFrame = targetCFrame;
+				end;
+			end;
+		end;
+	end;
+	updateFOVCircle();
+end);
+
+RunService.Heartbeat:Connect(function()
+	if _G.espEnabled then updateESP(); end;
+end);
+
+_G.__vyperiaAimbotCleanup = function()
+	for p in espMap do espDetach(p); end;
+	if fovCircleDrawing then fovCircleDrawing:Remove(); end;
+	for pp in pairs(plrConns) do untrackPlayer(pp); end;
+end;
+
+VibeUI:Notification({ Title = "Vyperia Aimbot", Description = "Loaded with VibeUI successfully!", Type = "success" });
