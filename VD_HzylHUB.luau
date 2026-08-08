@@ -1,4 +1,4 @@
--- Made by hzyl (GUI-less Edition - Instant Mobile & PC + Fixed Remote Payload)
+-- Made by hzyl (GUI-less Edition - Zero-Explosion & Zero Killer Alerts)
 
 local Workspace = game:GetService("Workspace")
 local RunService = game:GetService("RunService")
@@ -41,7 +41,6 @@ end)
 local genRemotes = ReplicatedStorage:FindFirstChild("Remotes") and ReplicatedStorage.Remotes:FindFirstChild("Generator")
 local skillResultRemote = genRemotes and genRemotes:FindFirstChild("SkillCheckResultEvent")
 
--- Fixed Remote Success Payload (Matches original FireServer(true))
 local function sendServerSkillSuccess()
     local genRemotesNow = ReplicatedStorage:FindFirstChild("Remotes") and ReplicatedStorage.Remotes:FindFirstChild("Generator")
     local currentSkillRemote = genRemotesNow and genRemotesNow:FindFirstChild("SkillCheckResultEvent") or skillResultRemote
@@ -313,7 +312,6 @@ local function setupGenerator(generator)
         highlight.OutlineTransparency = 0
         highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
         highlight.OutlineColor = Settings.GenOutlineColor
-        highlight.FillColor = Settings.GenOutlineColor
         highlight.Adornee = generator
         highlight.Parent = generator
 
@@ -359,13 +357,9 @@ local function setupGenerator(generator)
                 if pct >= 100 then
                     label.TextColor3 = Settings.GenCompleteColor
                     highlight.OutlineColor = Settings.GenCompleteColor
-                    highlight.FillColor = Settings.GenCompleteColor
-                    highlight.FillTransparency = 0.45 -- Green inner chams when completed
                 else
                     label.TextColor3 = Settings.GenOutlineColor
                     highlight.OutlineColor = Settings.GenOutlineColor
-                    highlight.FillColor = Settings.GenOutlineColor
-                    highlight.FillTransparency = 0.85
                 end
             end
         end
@@ -399,15 +393,16 @@ Workspace.DescendantRemoving:Connect(function(item)
 end)
 
 ------------------------------------------------------------------
--- AUTO SKILL CHECK ENGINE (Mobile Instant vs PC Instant)
+-- AUTO SKILL CHECK ENGINE (Mobile Touch-Button vs PC)
 ------------------------------------------------------------------
 if isMobile then
     ------------------------------------------------------------------
-    -- INSTANT MOBILE SKILL CHECK ENGINE (Camera-Lock Safe)
+    -- MOBILE TOUCH-BUTTON ENGINE (Zero Explosions + Fallback Guard)
     ------------------------------------------------------------------
+    local TouchID = 8822
     local ActionPath = "Survivor-mob.Controls.action.check"
-    local boundPrompts = {}
-    local currentTouchID = 5000
+    local HeartbeatConnection = nil
+    local VisibilityConnection = nil
 
     local function GetActionTarget()
         local PlayerGui = localPlayer:FindFirstChild("PlayerGui")
@@ -421,113 +416,113 @@ if isMobile then
 
     local function TriggerMobileButton()
         local b = GetActionTarget()
-        if b and b:IsA("GuiObject") then
+        if b and b:IsA("GuiObject") and b.AbsoluteSize.X > 0 then
             local p, s, i = b.AbsolutePosition, b.AbsoluteSize, GuiService:GetGuiInset()
             local cx, cy = p.X + (s.X / 2) + i.X, p.Y + (s.Y / 2) + i.Y
-            
-            currentTouchID = (currentTouchID % 9000) + 1000
-            local id = currentTouchID
-
             pcall(function()
-                VirtualInputManager:SendTouchEvent(id, 0, cx, cy)
+                VirtualInputManager:SendTouchEvent(TouchID, 0, cx, cy)
+                task.wait(0.01)
+                VirtualInputManager:SendTouchEvent(TouchID, 2, cx, cy)
             end)
-            task.wait(0.01)
+        else
             pcall(function()
-                VirtualInputManager:SendTouchEvent(id, 2, cx, cy)
+                VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Space, false, game)
+                task.wait(0.01)
+                VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Space, false, game)
             end)
         end
     end
 
-    local function setupSkillCheckGuiMobile(promptGui)
-        if not promptGui or boundPrompts[promptGui] then return end
-        boundPrompts[promptGui] = true
-
+    local function InitializeAutoSkillCheck()
         task.spawn(function()
-            local check = promptGui:FindFirstChild("Check") or promptGui:WaitForChild("Check", 10)
-            local line = check and (check:FindFirstChild("Line") or check:WaitForChild("Line", 10))
-            local goal = check and (check:FindFirstChild("Goal") or check:WaitForChild("Goal", 10))
+            local PlayerGui = localPlayer:FindFirstChild("PlayerGui") or localPlayer:WaitForChild("PlayerGui", 10)
+            if not PlayerGui then return end
 
-            if not (check and line and goal) then return end
+            local prompt = PlayerGui:FindFirstChild("SkillCheckPromptGui") or PlayerGui:WaitForChild("SkillCheckPromptGui", 10)
+            local check = prompt and (prompt:FindFirstChild("Check") or prompt:WaitForChild("Check", 10))
+            if not check then return end
+            
+            local line = check:FindFirstChild("Line") or check:WaitForChild("Line", 10)
+            local goal = check:FindFirstChild("Goal") or check:WaitForChild("Goal", 10)
+            if not (line and goal) then return end
 
-            local handledThisPrompt = false
+            if VisibilityConnection then VisibilityConnection:Disconnect() end
+            
+            local isTriggering = false
 
-            local function resetPromptState()
-                handledThisPrompt = false
+            VisibilityConnection = check:GetPropertyChangedSignal("Visible"):Connect(function()
+                if Settings.AutoSkillCheck and check.Visible then
+                    if HeartbeatConnection then HeartbeatConnection:Disconnect() end
+                    
+                    HeartbeatConnection = RunService.Heartbeat:Connect(function()
+                        if not (check.Visible and check.Parent) then
+                            if HeartbeatConnection then
+                                HeartbeatConnection:Disconnect()
+                                HeartbeatConnection = nil
+                            end
+                            return
+                        end
+
+                        if isTriggering then return end
+
+                        local lr, gr = line.Rotation % 360, goal.Rotation % 360
+                        local isScourge = isKingScourgeActive()
+
+                        local ss, se, snapOffset
+                        if isScourge then
+                            ss = (gr + 3) % 360
+                            se = (gr + 18) % 360
+                            snapOffset = (Settings.SkillCheckMode == "great") and 5 or 12
+                        else
+                            ss = (gr + 101) % 360
+                            se = (gr + 115) % 360
+                            snapOffset = (Settings.SkillCheckMode == "great") and 109 or 130
+                        end
+                        
+                        if (ss > se and (lr >= ss or lr <= se)) or (lr >= ss and lr <= se) then
+                            isTriggering = true
+                            
+                            line.Rotation = (goal.Rotation + snapOffset)
+                            sendServerSkillSuccess() -- Guarantees server registers SUCCESS immediately
+                            TriggerMobileButton()
+                            
+                            task.wait(0.05)
+                            isTriggering = false
+                        end
+                    end)
+                elseif HeartbeatConnection then
+                    HeartbeatConnection:Disconnect()
+                    HeartbeatConnection = nil
+                end
+            end)
+
+            if check.Visible and Settings.AutoSkillCheck then
+                VisibilityConnection:Fire()
             end
-
-            local function processInstantCheckMobile()
-                if not (check.Visible and promptGui.Enabled and Settings.AutoSkillCheck) then
-                    handledThisPrompt = false
-                    return
-                end
-
-                if handledThisPrompt then return end
-                handledThisPrompt = true
-
-                local offset = 109
-                if isKingScourgeActive() then
-                    offset = (Settings.SkillCheckMode == "great") and 5 or 12
-                else
-                    offset = (Settings.SkillCheckMode == "great") and 109 or 130
-                end
-
-                line.Rotation = (goal.Rotation + offset)
-
-                sendServerSkillSuccess()
-                TriggerMobileButton()
-
-                task.delay(0.05, resetPromptState)
-            end
-
-            promptGui:GetPropertyChangedSignal("Enabled"):Connect(function()
-                resetPromptState()
-                processInstantCheckMobile()
-            end)
-
-            check:GetPropertyChangedSignal("Visible"):Connect(function()
-                resetPromptState()
-                processInstantCheckMobile()
-            end)
-
-            goal:GetPropertyChangedSignal("Rotation"):Connect(function()
-                resetPromptState()
-                processInstantCheckMobile()
-            end)
-
-            check:GetPropertyChangedSignal("Rotation"):Connect(function()
-                resetPromptState()
-                processInstantCheckMobile()
-            end)
-
-            local renderConn
-            renderConn = RunService.RenderStepped:Connect(function()
-                if not promptGui.Parent then
-                    if renderConn then renderConn:Disconnect() end
-                    boundPrompts[promptGui] = nil
-                    return
-                end
-                processInstantCheckMobile()
-            end)
-
-            processInstantCheckMobile()
         end)
     end
+
+    localPlayer.CharacterAdded:Connect(function()
+        if HeartbeatConnection then HeartbeatConnection:Disconnect() end
+        if VisibilityConnection then VisibilityConnection:Disconnect() end
+        task.wait(1)
+        InitializeAutoSkillCheck()
+    end)
 
     local PlayerGui = localPlayer:FindFirstChild("PlayerGui")
-    local existingPrompt = PlayerGui and PlayerGui:FindFirstChild("SkillCheckPromptGui")
-    if existingPrompt then setupSkillCheckGuiMobile(existingPrompt) end
-
     if PlayerGui then
         PlayerGui.ChildAdded:Connect(function(child)
-            if child.Name == "SkillCheckPromptGui" or child.Name:lower():find("skillcheck") then
-                setupSkillCheckGuiMobile(child)
+            if child.Name == "SkillCheckPromptGui" then
+                InitializeAutoSkillCheck()
             end
         end)
     end
+
+    InitializeAutoSkillCheck()
 
 else
     ------------------------------------------------------------------
-    -- PC ENGINE (King's Scourge Fixed + Fixed Remote Payload)
+    -- PC ORIGINAL ENGINE
     ------------------------------------------------------------------
     local boundPrompts = {}
 
@@ -555,19 +550,8 @@ else
                 end
 
                 if handledThisPrompt then return end
-                handledThisPrompt = true
 
-                local offset = 109
-                local resetDelay = 0.2
-
-                if isKingScourgeActive() then
-                    offset = (Settings.SkillCheckMode == "great") and 5 or 12
-                    resetDelay = 0.05
-                else
-                    offset = (Settings.SkillCheckMode == "great") and 109 or 130
-                    resetDelay = 0.2
-                end
-
+                local offset = (Settings.SkillCheckMode == "great") and 109 or 130
                 line.Rotation = (goal.Rotation + offset)
 
                 VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Space, false, game)
@@ -575,7 +559,7 @@ else
                 VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Space, false, game)
 
                 sendServerSkillSuccess()
-                task.delay(resetDelay, resetPromptState)
+                task.delay(0.2, resetPromptState)
             end
 
             promptGui:GetPropertyChangedSignal("Enabled"):Connect(function()
