@@ -1,19 +1,58 @@
--- Made by hzyl (GUI-less Ultra-Fast Edition)
+-- Made by hzyl (GUI-less Edition - Instant Mobile & PC + Fixed Remote Payload)
 
 local Workspace = game:GetService("Workspace")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local VirtualInputManager = game:GetService("VirtualInputManager")
+local GuiService = game:GetService("GuiService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Lighting = game:GetService("Lighting")
 local Players = game:GetService("Players")
-local localPlayer = Players.LocalPlayer
-local PlayerGui = localPlayer:WaitForChild("PlayerGui")
+
+local localPlayer = Players.LocalPlayer or Players.PlayerAdded:Wait()
+
+-- Safe Platform & Delta Executor Detection
+local isDelta = false
+pcall(function()
+    local getExec = identifyexecutor or getexecutorname
+    if getExec then
+        local name = getExec()
+        if type(name) == "string" and name:lower():find("delta") then
+            isDelta = true
+        elseif type(name) == "table" and name[1] and tostring(name[1]):lower():find("delta") then
+            isDelta = true
+        end
+    end
+end)
+
+local isMobile = UserInputService.TouchEnabled or isDelta
+
+-- Simple Platform Loaded Notification
+task.spawn(function()
+    pcall(function()
+        game:GetService("StarterGui"):SetCore("SendNotification", {
+            Title = "HzylHUB",
+            Text = isMobile and "Mobile version loaded" or "PC version loaded",
+            Duration = 3
+        })
+    end)
+end)
 
 local genRemotes = ReplicatedStorage:FindFirstChild("Remotes") and ReplicatedStorage.Remotes:FindFirstChild("Generator")
 local skillResultRemote = genRemotes and genRemotes:FindFirstChild("SkillCheckResultEvent")
 
--- Configured Headless Settings (All Auto Active, Fullbright Excluded)
+-- Fixed Remote Success Payload (Matches original FireServer(true))
+local function sendServerSkillSuccess()
+    local genRemotesNow = ReplicatedStorage:FindFirstChild("Remotes") and ReplicatedStorage.Remotes:FindFirstChild("Generator")
+    local currentSkillRemote = genRemotesNow and genRemotesNow:FindFirstChild("SkillCheckResultEvent") or skillResultRemote
+    if currentSkillRemote then
+        pcall(function()
+            currentSkillRemote:FireServer(true)
+        end)
+    end
+end
+
+-- Configured Headless Settings
 local Settings = {
     GenESP = true,
     GenHighlightEnabled = true,
@@ -42,9 +81,7 @@ local function isKiller(player)
         end
     end
 
-    if player:GetAttribute("IsKiller") == true then
-        return true
-    end
+    if player:GetAttribute("IsKiller") == true then return true end
 
     local role = player:GetAttribute("Role")
     if role then
@@ -52,19 +89,13 @@ local function isKiller(player)
         if roleStr == "killer" or roleStr:find("killer") or roleStr:find("scourge") then
             return true
         end
-        if roleStr == "survivor" then
-            return false
-        end
+        if roleStr == "survivor" then return false end
     end
 
     if player.Character then
-        if player.Character:GetAttribute("IsKiller") == true then
-            return true
-        end
+        if player.Character:GetAttribute("IsKiller") == true then return true end
         local charRole = player.Character:GetAttribute("Role")
-        if charRole and tostring(charRole):lower():find("killer") then
-            return true
-        end
+        if charRole and tostring(charRole):lower():find("killer") then return true end
     end
 
     return false
@@ -92,7 +123,8 @@ local function isKingScourgeActive()
         end
     end
 
-    local promptGui = PlayerGui:FindFirstChild("SkillCheckPromptGui")
+    local PlayerGui = localPlayer:FindFirstChild("PlayerGui")
+    local promptGui = PlayerGui and PlayerGui:FindFirstChild("SkillCheckPromptGui")
     if promptGui then
         for _, v in ipairs(promptGui:GetDescendants()) do
             local vn = v.Name:lower()
@@ -126,10 +158,12 @@ local function getPlayerOutlineColor(player, humanoid)
     return getHealthColor(humanoid)
 end
 
+------------------------------------------------------------------
+-- ESP SYSTEM (Generators & Players)
+------------------------------------------------------------------
 local activeGenerators = {}
 local activePlayers = {}
 
--- Event-Driven Player ESP Logic
 local function removePlayerESP(player)
     if activePlayers[player] then
         local data = activePlayers[player]
@@ -222,22 +256,14 @@ local function setupPlayer(player)
         table.insert(data.Conns, charAncestry)
     end
 
-    if player.Character then
-        onCharacterAdded(player.Character)
-    end
+    if player.Character then onCharacterAdded(player.Character) end
     player.CharacterAdded:Connect(onCharacterAdded)
 end
 
-for _, player in ipairs(Players:GetPlayers()) do
-    setupPlayer(player)
-end
+for _, player in ipairs(Players:GetPlayers()) do setupPlayer(player) end
 Players.PlayerAdded:Connect(setupPlayer)
+Players.PlayerRemoving:Connect(removePlayerESP)
 
-Players.PlayerRemoving:Connect(function(player)
-    removePlayerESP(player)
-end)
-
--- Generator Setup Logic (Event-Driven)
 local function removeGeneratorESP(generator)
     if activeGenerators[generator] then
         local data = activeGenerators[generator]
@@ -287,6 +313,7 @@ local function setupGenerator(generator)
         highlight.OutlineTransparency = 0
         highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
         highlight.OutlineColor = Settings.GenOutlineColor
+        highlight.FillColor = Settings.GenOutlineColor
         highlight.Adornee = generator
         highlight.Parent = generator
 
@@ -332,9 +359,13 @@ local function setupGenerator(generator)
                 if pct >= 100 then
                     label.TextColor3 = Settings.GenCompleteColor
                     highlight.OutlineColor = Settings.GenCompleteColor
+                    highlight.FillColor = Settings.GenCompleteColor
+                    highlight.FillTransparency = 0.45 -- Green inner chams when completed
                 else
                     label.TextColor3 = Settings.GenOutlineColor
                     highlight.OutlineColor = Settings.GenOutlineColor
+                    highlight.FillColor = Settings.GenOutlineColor
+                    highlight.FillTransparency = 0.85
                 end
             end
         end
@@ -351,14 +382,12 @@ local function setupGenerator(generator)
     end)
 end
 
--- Initial Generator Registration
 for _, item in ipairs(Workspace:GetDescendants()) do
     if item:IsA("Model") and (item.Name == "Generator" or item.Name:lower():find("generator")) then
         setupGenerator(item)
     end
 end
 
--- Event Listeners for Generator Spawns
 Workspace.DescendantAdded:Connect(function(item)
     if item:IsA("Model") and (item.Name == "Generator" or item.Name:lower():find("generator")) then
         setupGenerator(item)
@@ -369,66 +398,176 @@ Workspace.DescendantRemoving:Connect(function(item)
     if activeGenerators[item] then removeGeneratorESP(item) end
 end)
 
--- Ultra-Fast Instant-Trigger SkillCheck Engine
-local boundPrompts = {}
+------------------------------------------------------------------
+-- AUTO SKILL CHECK ENGINE (Mobile Instant vs PC Instant)
+------------------------------------------------------------------
+if isMobile then
+    ------------------------------------------------------------------
+    -- INSTANT MOBILE SKILL CHECK ENGINE (Camera-Lock Safe)
+    ------------------------------------------------------------------
+    local ActionPath = "Survivor-mob.Controls.action.check"
+    local boundPrompts = {}
+    local currentTouchID = 5000
 
-local function setupSkillCheckGui(promptGui)
-    if not promptGui or boundPrompts[promptGui] then return end
-    boundPrompts[promptGui] = true
-
-    task.spawn(function()
-        local check = promptGui:FindFirstChild("Check") or promptGui:WaitForChild("Check", 10)
-        local line = check and (check:FindFirstChild("Line") or check:WaitForChild("Line", 10))
-        local goal = check and (check:FindFirstChild("Goal") or check:WaitForChild("Goal", 10))
-
-        if not (check and line and goal) then return end
-
-        local handledThisPrompt = false
-
-        local function resetPromptState()
-            handledThisPrompt = false
+    local function GetActionTarget()
+        local PlayerGui = localPlayer:FindFirstChild("PlayerGui")
+        local current = PlayerGui
+        if not current then return nil end
+        for segment in string.gmatch(ActionPath, "[^%.]+") do
+            current = current and current:FindFirstChild(segment)
         end
+        return current
+    end
 
-        local function sendServerSkillSuccess()
-            local genRemotesNow = ReplicatedStorage:FindFirstChild("Remotes") and ReplicatedStorage.Remotes:FindFirstChild("Generator")
-            local currentSkillRemote = genRemotesNow and genRemotesNow:FindFirstChild("SkillCheckResultEvent") or skillResultRemote
-            if currentSkillRemote then
-                pcall(function()
-                    currentSkillRemote:FireServer("success", 1)
-                end)
-            end
+    local function TriggerMobileButton()
+        local b = GetActionTarget()
+        if b and b:IsA("GuiObject") then
+            local p, s, i = b.AbsolutePosition, b.AbsoluteSize, GuiService:GetGuiInset()
+            local cx, cy = p.X + (s.X / 2) + i.X, p.Y + (s.Y / 2) + i.Y
+            
+            currentTouchID = (currentTouchID % 9000) + 1000
+            local id = currentTouchID
+
+            pcall(function()
+                VirtualInputManager:SendTouchEvent(id, 0, cx, cy)
+            end)
+            task.wait(0.01)
+            pcall(function()
+                VirtualInputManager:SendTouchEvent(id, 2, cx, cy)
+            end)
         end
+    end
 
-        local function processInstantCheck()
-            if not (check.Visible and promptGui.Enabled and Settings.AutoSkillCheck) then
+    local function setupSkillCheckGuiMobile(promptGui)
+        if not promptGui or boundPrompts[promptGui] then return end
+        boundPrompts[promptGui] = true
+
+        task.spawn(function()
+            local check = promptGui:FindFirstChild("Check") or promptGui:WaitForChild("Check", 10)
+            local line = check and (check:FindFirstChild("Line") or check:WaitForChild("Line", 10))
+            local goal = check and (check:FindFirstChild("Goal") or check:WaitForChild("Goal", 10))
+
+            if not (check and line and goal) then return end
+
+            local handledThisPrompt = false
+
+            local function resetPromptState()
                 handledThisPrompt = false
-                return
             end
 
-            if handledThisPrompt then return end
-
-            if isKingScourgeActive() then
-                local lineRot = line.AbsoluteRotation % 360
-                local goalRot = goal.AbsoluteRotation % 360
-                local targetAngle = (goalRot + (Settings.SkillCheckMode == "great" and 5 or 12)) % 360
-
-                local diff = math.abs((lineRot - targetAngle + 180) % 360 - 180)
-
-                if diff <= 28 then
-                    handledThisPrompt = true
-                    
-                    line.Rotation = (goal.Rotation + ((Settings.SkillCheckMode == "great") and 5 or 12))
-                    
-                    VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Space, false, game)
-                    task.wait(0.025)
-                    VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Space, false, game)
-                    
-                    sendServerSkillSuccess()
-                    task.delay(0.2, resetPromptState)
+            local function processInstantCheckMobile()
+                if not (check.Visible and promptGui.Enabled and Settings.AutoSkillCheck) then
+                    handledThisPrompt = false
+                    return
                 end
-            else
+
+                if handledThisPrompt then return end
                 handledThisPrompt = true
-                local offset = (Settings.SkillCheckMode == "great") and 109 or 130
+
+                local offset = 109
+                if isKingScourgeActive() then
+                    offset = (Settings.SkillCheckMode == "great") and 5 or 12
+                else
+                    offset = (Settings.SkillCheckMode == "great") and 109 or 130
+                end
+
+                line.Rotation = (goal.Rotation + offset)
+
+                sendServerSkillSuccess()
+                TriggerMobileButton()
+
+                task.delay(0.05, resetPromptState)
+            end
+
+            promptGui:GetPropertyChangedSignal("Enabled"):Connect(function()
+                resetPromptState()
+                processInstantCheckMobile()
+            end)
+
+            check:GetPropertyChangedSignal("Visible"):Connect(function()
+                resetPromptState()
+                processInstantCheckMobile()
+            end)
+
+            goal:GetPropertyChangedSignal("Rotation"):Connect(function()
+                resetPromptState()
+                processInstantCheckMobile()
+            end)
+
+            check:GetPropertyChangedSignal("Rotation"):Connect(function()
+                resetPromptState()
+                processInstantCheckMobile()
+            end)
+
+            local renderConn
+            renderConn = RunService.RenderStepped:Connect(function()
+                if not promptGui.Parent then
+                    if renderConn then renderConn:Disconnect() end
+                    boundPrompts[promptGui] = nil
+                    return
+                end
+                processInstantCheckMobile()
+            end)
+
+            processInstantCheckMobile()
+        end)
+    end
+
+    local PlayerGui = localPlayer:FindFirstChild("PlayerGui")
+    local existingPrompt = PlayerGui and PlayerGui:FindFirstChild("SkillCheckPromptGui")
+    if existingPrompt then setupSkillCheckGuiMobile(existingPrompt) end
+
+    if PlayerGui then
+        PlayerGui.ChildAdded:Connect(function(child)
+            if child.Name == "SkillCheckPromptGui" or child.Name:lower():find("skillcheck") then
+                setupSkillCheckGuiMobile(child)
+            end
+        end)
+    end
+
+else
+    ------------------------------------------------------------------
+    -- PC ENGINE (King's Scourge Fixed + Fixed Remote Payload)
+    ------------------------------------------------------------------
+    local boundPrompts = {}
+
+    local function setupSkillCheckGui(promptGui)
+        if not promptGui or boundPrompts[promptGui] then return end
+        boundPrompts[promptGui] = true
+
+        task.spawn(function()
+            local check = promptGui:FindFirstChild("Check") or promptGui:WaitForChild("Check", 10)
+            local line = check and (check:FindFirstChild("Line") or check:WaitForChild("Line", 10))
+            local goal = check and (check:FindFirstChild("Goal") or check:WaitForChild("Goal", 10))
+
+            if not (check and line and goal) then return end
+
+            local handledThisPrompt = false
+
+            local function resetPromptState()
+                handledThisPrompt = false
+            end
+
+            local function processInstantCheck()
+                if not (check.Visible and promptGui.Enabled and Settings.AutoSkillCheck) then
+                    handledThisPrompt = false
+                    return
+                end
+
+                if handledThisPrompt then return end
+                handledThisPrompt = true
+
+                local offset = 109
+                local resetDelay = 0.2
+
+                if isKingScourgeActive() then
+                    offset = (Settings.SkillCheckMode == "great") and 5 or 12
+                    resetDelay = 0.05
+                else
+                    offset = (Settings.SkillCheckMode == "great") and 109 or 130
+                    resetDelay = 0.2
+                end
+
                 line.Rotation = (goal.Rotation + offset)
 
                 VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Space, false, game)
@@ -436,51 +575,52 @@ local function setupSkillCheckGui(promptGui)
                 VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Space, false, game)
 
                 sendServerSkillSuccess()
-                task.delay(0.2, resetPromptState)
+                task.delay(resetDelay, resetPromptState)
             end
-        end
 
-        -- Direct Instant Trigger on Event Signal + RenderStepped Fallback
-        promptGui:GetPropertyChangedSignal("Enabled"):Connect(function()
-            resetPromptState()
+            promptGui:GetPropertyChangedSignal("Enabled"):Connect(function()
+                resetPromptState()
+                processInstantCheck()
+            end)
+
+            check:GetPropertyChangedSignal("Visible"):Connect(function()
+                resetPromptState()
+                processInstantCheck()
+            end)
+
+            goal:GetPropertyChangedSignal("Rotation"):Connect(function()
+                resetPromptState()
+                processInstantCheck()
+            end)
+
+            check:GetPropertyChangedSignal("Rotation"):Connect(function()
+                resetPromptState()
+                processInstantCheck()
+            end)
+
+            local renderConn
+            renderConn = RunService.RenderStepped:Connect(function()
+                if not promptGui.Parent then
+                    if renderConn then renderConn:Disconnect() end
+                    boundPrompts[promptGui] = nil
+                    return
+                end
+                processInstantCheck()
+            end)
+
             processInstantCheck()
         end)
-
-        check:GetPropertyChangedSignal("Visible"):Connect(function()
-            resetPromptState()
-            processInstantCheck()
-        end)
-
-        goal:GetPropertyChangedSignal("Rotation"):Connect(function()
-            resetPromptState()
-            processInstantCheck()
-        end)
-
-        check:GetPropertyChangedSignal("Rotation"):Connect(function()
-            resetPromptState()
-            processInstantCheck()
-        end)
-
-        local renderConn
-        renderConn = RunService.RenderStepped:Connect(function()
-            if not promptGui.Parent then
-                if renderConn then renderConn:Disconnect() end
-                boundPrompts[promptGui] = nil
-                return
-            end
-            processInstantCheck()
-        end)
-
-        processInstantCheck()
-    end)
-end
-
--- Bind existing & future SkillCheck GUIs
-local existingPrompt = PlayerGui:FindFirstChild("SkillCheckPromptGui")
-if existingPrompt then setupSkillCheckGui(existingPrompt) end
-
-PlayerGui.ChildAdded:Connect(function(child)
-    if child.Name == "SkillCheckPromptGui" or child.Name:lower():find("skillcheck") then
-        setupSkillCheckGui(child)
     end
-end)
+
+    local PlayerGui = localPlayer:FindFirstChild("PlayerGui")
+    local existingPrompt = PlayerGui and PlayerGui:FindFirstChild("SkillCheckPromptGui")
+    if existingPrompt then setupSkillCheckGui(existingPrompt) end
+
+    if PlayerGui then
+        PlayerGui.ChildAdded:Connect(function(child)
+            if child.Name == "SkillCheckPromptGui" or child.Name:lower():find("skillcheck") then
+                setupSkillCheckGui(child)
+            end
+        end)
+    end
+end
