@@ -9,6 +9,8 @@ for _, item in ipairs(workspace:GetDescendants()) do
         pcall(function() item:Destroy() end)
     elseif item:IsA("BillboardGui") and (item.Name == "ESPGenBillboard" or item.Name == "ESPNameBillboard" or item.Name == "ESPExitBillboard") then
         pcall(function() item:Destroy() end)
+    elseif item:IsA("ScreenGui") and (item.Name == "HzylHUB_CrosshairGui" or item.Name == "HzylHUB_KillerInfoGui") then
+        pcall(function() item:Destroy() end)
     end
 end
 
@@ -94,96 +96,41 @@ local Settings = {
     Crosshair = {
         enabled = true,
         color = Color3.fromRGB(57, 255, 20),
-        thickness = 1,
-        length = 0,
-        gap = 0,
-        opacity = 1,
-        dot = true,
-        dot_size = 2.5,
+        dot_size = 5,
         x_offset = 0,
-        y_offset = 0,
-        recenter = true
+        y_offset = 0
     }
 }
 
--- Crosshair
-if Settings.Crosshair.enabled and Drawing then
-    local dot = nil
-    local crosshairLines = {}
+-- Crosshair (Mobile & PC Universal)
+if Settings.Crosshair.enabled then
+    local crosshairGui = Instance.new("ScreenGui")
+    crosshairGui.Name = "HzylHUB_CrosshairGui"
+    crosshairGui.ResetOnSpawn = false
+    crosshairGui.IgnoreGuiInset = true
 
-    if Settings.Crosshair.length > 0 then
-        local function createLine()
-            local line = Drawing.new("Line")
-            line.Thickness = Settings.Crosshair.thickness
-            line.Color = Settings.Crosshair.color
-            line.Transparency = Settings.Crosshair.opacity
-            line.Visible = true
-            table.insert(DrawingsToDestroy, line)
-            return line
+    pcall(function()
+        if gethui then
+            crosshairGui.Parent = gethui()
+        else
+            crosshairGui.Parent = PlayerGui
         end
-        crosshairLines.top = createLine()
-        crosshairLines.bottom = createLine()
-        crosshairLines.left = createLine()
-        crosshairLines.right = createLine()
-    end
+    end)
+    if not crosshairGui.Parent then crosshairGui.Parent = PlayerGui end
+    ObjectsToDestroy[crosshairGui] = true
 
-    if Settings.Crosshair.dot then
-        dot = Drawing.new("Circle")
-        dot.Thickness = 1
-        dot.Filled = true
-        dot.Color = Settings.Crosshair.color
-        dot.Transparency = Settings.Crosshair.opacity
-        dot.Visible = true
-        table.insert(DrawingsToDestroy, dot)
-    end
+    local dot = Instance.new("Frame")
+    dot.Name = "Dot"
+    dot.AnchorPoint = Vector2.new(0.5, 0.5)
+    dot.Position = UDim2.new(0.5, Settings.Crosshair.x_offset, 0.5, Settings.Crosshair.y_offset)
+    dot.Size = UDim2.new(0, Settings.Crosshair.dot_size, 0, Settings.Crosshair.dot_size)
+    dot.BackgroundColor3 = Settings.Crosshair.color
+    dot.BorderSizePixel = 0
+    dot.Parent = crosshairGui
 
-    local function updateCrosshairPosition()
-        local cam = workspace.CurrentCamera or Camera
-        if not cam then return end
-        local centerX = (cam.ViewportSize.X / 2) + Settings.Crosshair.x_offset
-        local centerY = (cam.ViewportSize.Y / 2) + Settings.Crosshair.y_offset
-
-        if dot then
-            dot.Position = Vector2.new(centerX, centerY)
-            dot.Radius = Settings.Crosshair.dot_size
-        end
-
-        if Settings.Crosshair.length > 0 then
-            if crosshairLines.top then
-                crosshairLines.top.From = Vector2.new(centerX, centerY - Settings.Crosshair.gap)
-                crosshairLines.top.To = Vector2.new(centerX, centerY - Settings.Crosshair.gap - Settings.Crosshair.length)
-            end
-            if crosshairLines.bottom then
-                crosshairLines.bottom.From = Vector2.new(centerX, centerY + Settings.Crosshair.gap)
-                crosshairLines.bottom.To = Vector2.new(centerX, centerY + Settings.Crosshair.gap - Settings.Crosshair.length)
-            end
-            if crosshairLines.left then
-                crosshairLines.left.From = Vector2.new(centerX - Settings.Crosshair.gap, centerY)
-                crosshairLines.left.To = Vector2.new(centerX - Settings.Crosshair.gap - Settings.Crosshair.length, centerY)
-            end
-            if crosshairLines.right then
-                crosshairLines.right.From = Vector2.new(centerX + Settings.Crosshair.gap, centerY)
-                crosshairLines.right.To = Vector2.new(centerX + Settings.Crosshair.gap + Settings.Crosshair.length)
-            end
-        end
-    end
-
-    updateCrosshairPosition()
-
-    if Settings.Crosshair.recenter then
-        local cCross = (workspace.CurrentCamera or Camera):GetPropertyChangedSignal("ViewportSize"):Connect(updateCrosshairPosition)
-        table.insert(Connections, cCross)
-
-        local cCamChanged = workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
-            Camera = workspace.CurrentCamera
-            updateCrosshairPosition()
-            if Camera then
-                local cCross2 = Camera:GetPropertyChangedSignal("ViewportSize"):Connect(updateCrosshairPosition)
-                table.insert(Connections, cCross2)
-            end
-        end)
-        table.insert(Connections, cCamChanged)
-    end
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(1, 0)
+    corner.Parent = dot
 end
 
 local cachedPerkEquipped = false
@@ -556,9 +503,7 @@ killerGui.Name = "HzylHUB_KillerInfoGui"
 killerGui.ResetOnSpawn = false
 
 pcall(function()
-    if syn and syn.protect_gui then
-        syn.protect_gui(killerGui)
-    elseif gethui then
+    if gethui then
         killerGui.Parent = gethui()
     else
         killerGui.Parent = PlayerGui
@@ -596,6 +541,28 @@ end
 updateKillerLabel()
 
 -- Zombie ESP
+local function isZombieCandidate(model)
+    if not (model and model:IsA("Model")) then return false end
+    if Players:GetPlayerFromCharacter(model) then return false end
+
+    local name = model.Name:lower()
+    if name:find("generator") or name:find("gate") or name:find("lever") or name:find("pallet") or name:find("hook") then
+        return false
+    end
+
+    if name:find("zombie") or name:find("scp") or name:find("049") or name:find("walker") 
+       or name:find("corpse") or name:find("infected") or name:find("minion") or name:find("undead") 
+       or name:find("ghoul") or name:find("patient") or name:find("crawler") or name:find("reanimated") then
+        return true
+    end
+
+    if model:GetAttribute("IsZombie") ~= nil or model:GetAttribute("Zombie") ~= nil or model:GetAttribute("Corpse") ~= nil then
+        return true
+    end
+
+    return false
+end
+
 local function removeZombieESP(zombie)
     local data = activeZombies[zombie]
     if data then
@@ -605,85 +572,125 @@ local function removeZombieESP(zombie)
     end
 end
 
-local function isZombieAlive(zombie)
-    if not zombie or not zombie.Parent then return false end
-    local hum = zombie:FindFirstChildWhichIsA("Humanoid")
-    if not hum or hum.Health <= 0 then return false end
-    return true
-end
-
 local function isZombieAwake(zombie)
-    if not zombie or not zombie.Parent then return false end
+    if not (zombie and zombie.Parent) then return false end
     local hum = zombie:FindFirstChildWhichIsA("Humanoid")
-    local hrp = zombie:FindFirstChild("HumanoidRootPart") or zombie.PrimaryPart
-    if not hum or not hrp then return false end
-    if hum.Health <= 0 or hum.Sit or hrp.Anchored then return false end
+    local hrp = zombie:FindFirstChild("HumanoidRootPart") or zombie.PrimaryPart or zombie:FindFirstChild("Torso") or zombie:FindFirstChild("UpperTorso")
+    
+    if hum and hum.Health <= 0 then return false end
+
+    if zombie:GetAttribute("Awake") == true or zombie:GetAttribute("Active") == true then return true end
+    if zombie:GetAttribute("Dormant") == true or zombie:GetAttribute("Dead") == true or zombie:GetAttribute("Downed") == true or zombie:GetAttribute("Sleeping") == true then
+        return false
+    end
+
+    if zombie:FindFirstChild("Dormant") or zombie:FindFirstChild("Ragdoll") or zombie:FindFirstChild("Dead") or zombie:FindFirstChild("Knocked") then
+        return false
+    end
+
+    if hum then
+        if hum.Sit or hum.PlatformStand then
+            return false
+        end
+        local state = hum:GetState()
+        if state == Enum.HumanoidStateType.Dead or state == Enum.HumanoidStateType.Physics or state == Enum.HumanoidStateType.Ragdoll or state == Enum.HumanoidStateType.Seated then
+            return false
+        end
+    end
+
+    if hrp then
+        if hrp.CFrame.UpVector.Y < 0.5 then
+            return false
+        end
+    end
+
+    local name = zombie.Name:lower()
+    if (name:find("corpse") or name:find("patient")) and (not hrp or hrp.CFrame.UpVector.Y < 0.6) then
+        return false
+    end
+
     return true
 end
 
 local function setupZombie(zombie)
-    if not zombie:IsA("Model") then return end
-    local name = zombie.Name:lower()
-    if not (name:find("scp") or name:find("zombie") or name:find("walker")) then return end
-    if activeZombies[zombie] then return end
+    if not isZombieCandidate(zombie) or activeZombies[zombie] then return end
 
-    local hum = zombie:FindFirstChildWhichIsA("Humanoid")
-    local hrp = zombie:FindFirstChild("HumanoidRootPart") or zombie.PrimaryPart
-    if not hum then return end
+    task.spawn(function()
+        local hum = zombie:FindFirstChildWhichIsA("Humanoid") or zombie:WaitForChild("Humanoid", 3)
+        if not zombie.Parent then return end
 
-    local highlight = Instance.new("Highlight")
-    highlight.Name = "ZombieESPHighlight"
-    highlight.FillTransparency = 0.7
-    highlight.OutlineTransparency = 0
-    highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-    highlight.Adornee = zombie
-    highlight.Parent = zombie
+        local highlight = Instance.new("Highlight")
+        highlight.Name = "ZombieESPHighlight"
+        highlight.FillTransparency = 0.7
+        highlight.OutlineTransparency = 0
+        highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+        highlight.Adornee = zombie
+        highlight.Parent = zombie
 
-    ObjectsToDestroy[highlight] = true
+        ObjectsToDestroy[highlight] = true
 
-    local data = { Zombie = zombie, Highlight = highlight, Conns = {} }
-    activeZombies[zombie] = data
+        local data = { Zombie = zombie, Highlight = highlight, Conns = {} }
+        activeZombies[zombie] = data
 
-    local function updateZombieState()
-        if highlight and zombie.Parent then
-            if not (Settings.ZombieESP and isZombieAlive(zombie)) then
+        local lastAwake = nil
+
+        local function updateZombieState()
+            if not (highlight and zombie.Parent) then return end
+            if not Settings.ZombieESP then
                 highlight.Enabled = false
                 return
             end
 
             highlight.Enabled = true
-            if isZombieAwake(zombie) then
-                highlight.OutlineColor = Settings.ZombieAwakeColor
-                highlight.FillColor = Settings.ZombieAwakeColor
-                highlight.FillTransparency = 0.65
-            else
-                highlight.OutlineColor = Settings.ZombieDormantColor
-                highlight.FillColor = Settings.ZombieDormantColor
-                highlight.FillTransparency = 0.8
+            local awake = isZombieAwake(zombie)
+            if awake ~= lastAwake then
+                lastAwake = awake
+                local col = awake and Settings.ZombieAwakeColor or Settings.ZombieDormantColor
+                highlight.OutlineColor = col
+                highlight.FillColor = col
+                highlight.FillTransparency = awake and 0.65 or 0.8
             end
         end
-    end
 
-    local c1 = hum:GetPropertyChangedSignal("Health"):Connect(updateZombieState)
-    local c2 = hum:GetPropertyChangedSignal("Sit"):Connect(updateZombieState)
-    local c3 = zombie.AncestryChanged:Connect(function(_, parent)
-        if not parent then removeZombieESP(zombie) end
+        data.Update = updateZombieState
+
+        if hum then
+            local c1 = hum:GetPropertyChangedSignal("Health"):Connect(updateZombieState)
+            local c2 = hum:GetPropertyChangedSignal("Sit"):Connect(updateZombieState)
+            local c3 = hum:GetPropertyChangedSignal("PlatformStand"):Connect(updateZombieState)
+            local c4 = hum:GetPropertyChangedSignal("WalkSpeed"):Connect(updateZombieState)
+            local c5 = hum.StateChanged:Connect(function() updateZombieState() end)
+
+            table.insert(Connections, c1)
+            table.insert(Connections, c2)
+            table.insert(Connections, c3)
+            table.insert(Connections, c4)
+            table.insert(Connections, c5)
+            table.insert(data.Conns, c1)
+            table.insert(data.Conns, c2)
+            table.insert(data.Conns, c3)
+            table.insert(data.Conns, c4)
+            table.insert(data.Conns, c5)
+        end
+
+        local cAttr = zombie.AttributeChanged:Connect(updateZombieState)
+        local cChildAdd = zombie.ChildAdded:Connect(updateZombieState)
+        local cChildRem = zombie.ChildRemoved:Connect(updateZombieState)
+        local cAnc = zombie.AncestryChanged:Connect(function(_, parent)
+            if not parent then removeZombieESP(zombie) end
+        end)
+
+        table.insert(Connections, cAttr)
+        table.insert(Connections, cChildAdd)
+        table.insert(Connections, cChildRem)
+        table.insert(Connections, cAnc)
+        table.insert(data.Conns, cAttr)
+        table.insert(data.Conns, cChildAdd)
+        table.insert(data.Conns, cChildRem)
+        table.insert(data.Conns, cAnc)
+
+        updateZombieState()
     end)
-
-    table.insert(Connections, c1)
-    table.insert(Connections, c2)
-    table.insert(Connections, c3)
-    table.insert(data.Conns, c1)
-    table.insert(data.Conns, c2)
-    table.insert(data.Conns, c3)
-
-    if hrp then
-        local c4 = hrp:GetPropertyChangedSignal("Anchored"):Connect(updateZombieState)
-        table.insert(Connections, c4)
-        table.insert(data.Conns, c4)
-    end
-
-    updateZombieState()
 end
 
 -- Player ESP
@@ -1147,7 +1154,7 @@ local function scanModel(item)
     local n = item.Name:lower()
     if n == "generator" or n:find("generator") then
         setupGenerator(item)
-    elseif n:find("scp") or n:find("zombie") or n:find("walker") then
+    elseif isZombieCandidate(item) then
         setupZombie(item)
     elseif n == "exitlever" or (n:find("lever") and item.Parent and item.Parent.Name:lower():find("gate")) then
         setupExitLever(item)
@@ -1211,7 +1218,12 @@ table.insert(Connections, cCharAdded)
 
 local perkLoop = task.spawn(function()
     while true do
-        task.wait(3)
+        task.wait(0.5)
+        for _, data in pairs(activeZombies) do
+            if data.Update then
+                data.Update()
+            end
+        end
         local isEquipped = checkPerkEquipped()
         if isEquipped ~= cachedPerkEquipped then
             updatePerkState()
