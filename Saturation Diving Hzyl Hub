@@ -1,0 +1,1543 @@
+-- Hzyl Hub
+
+-- clean old instance
+local GLOBAL_ID = "HzylHub_Instance"
+local gTable = (getgenv and getgenv()) or _G
+
+if gTable and gTable[GLOBAL_ID] then
+    pcall(function() gTable[GLOBAL_ID]:Destroy() end)
+    gTable[GLOBAL_ID] = nil
+end
+if gTable then gTable.WindUI = nil end
+
+local CoreGui = game:GetService("CoreGui")
+pcall(function()
+    for _, gui in ipairs(CoreGui:GetDescendants()) do
+        if gui:IsA("ScreenGui") and (gui.Name:find("WindUI") or gui.Name:find("ESP")) then
+            gui:Destroy()
+        end
+    end
+end)
+
+-- state manager
+local State = {
+    Connections = {},
+    Threads = {},
+    PlayerESP = {},
+    MonsterESP = {},
+    WorldESP = {},
+    Window = nil
+}
+
+function State:AddConnection(conn)
+    if conn and typeof(conn) == "RBXScriptConnection" then
+        table.insert(self.Connections, conn)
+    end
+    return conn
+end
+
+function State:AddThread(thread)
+    if thread and typeof(thread) == "thread" then
+        table.insert(self.Threads, thread)
+    end
+    return thread
+end
+
+function State:Destroy()
+    -- disconnect events
+    for _, conn in ipairs(self.Connections) do
+        if conn and conn.Connected then
+            pcall(conn.Disconnect, conn)
+        end
+    end
+    table.clear(self.Connections)
+
+    -- stop threads
+    for _, th in ipairs(self.Threads) do
+        pcall(task.cancel, th)
+    end
+    table.clear(self.Threads)
+
+    -- clear esp
+    for _, item in pairs(self.PlayerESP) do
+        if item.Highlight then pcall(item.Highlight.Destroy, item.Highlight) end
+        if item.Billboard then pcall(item.Billboard.Destroy, item.Billboard) end
+    end
+    table.clear(self.PlayerESP)
+
+    for _, item in pairs(self.MonsterESP) do
+        if item.Highlight then pcall(item.Highlight.Destroy, item.Highlight) end
+        if item.Billboard then pcall(item.Billboard.Destroy, item.Billboard) end
+    end
+    table.clear(self.MonsterESP)
+
+    for _, item in pairs(self.WorldESP) do
+        if item.Highlight then pcall(item.Highlight.Destroy, item.Highlight) end
+        if item.Billboard then pcall(item.Billboard.Destroy, item.Billboard) end
+    end
+    table.clear(self.WorldESP)
+
+    -- remove ui
+    if self.Window and self.Window.Destroy then
+        pcall(self.Window.Destroy, self.Window)
+        self.Window = nil
+    end
+end
+
+if gTable then gTable[GLOBAL_ID] = State end
+
+-- services
+local Players = game:GetService("Players")
+local Lighting = game:GetService("Lighting")
+local UIS = game:GetService("UserInputService")
+local RS = game:GetService("RunService")
+local WS = game:GetService("Workspace")
+local HttpService = game:GetService("HttpService")
+
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+
+local isGuiOpen = true
+local guiKey = "LeftAlt"
+
+-- topmost ui
+local function setTopmost(gui)
+    if not gui or not gui:IsA("ScreenGui") then return end
+    pcall(function()
+        if gui.Parent ~= CoreGui then gui.Parent = CoreGui end
+        gui.DisplayOrder = 2147483647
+        gui.IgnoreGuiInset = true
+        gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    end)
+end
+
+State:AddConnection(CoreGui.ChildAdded:Connect(function(child)
+    if child:IsA("ScreenGui") and child.Name:find("WindUI") then
+        task.defer(setTopmost, child)
+    end
+end))
+
+-- local character
+local localChar, localHum, localRoot = nil, nil, nil
+local function updateChar(char)
+    localChar = char or LocalPlayer.Character
+    if localChar then
+        localHum = localChar:FindFirstChildOfClass("Humanoid")
+        localRoot = localChar:FindFirstChild("HumanoidRootPart") or localChar:FindFirstChildWhichIsA("BasePart")
+    else
+        localHum = nil
+        localRoot = nil
+    end
+end
+updateChar(LocalPlayer.Character)
+State:AddConnection(LocalPlayer.CharacterAdded:Connect(updateChar))
+
+-- mouse unlock
+State:AddConnection(RS.RenderStepped:Connect(function()
+    if isGuiOpen then
+        if UIS.MouseBehavior ~= Enum.MouseBehavior.Default then
+            UIS.MouseBehavior = Enum.MouseBehavior.Default
+        end
+        if not UIS.MouseIconEnabled then
+            UIS.MouseIconEnabled = true
+        end
+    end
+end))
+
+-- ============================================================================
+-- Movement
+-- ============================================================================
+
+local walkspeedOn = false
+local walkspeedValue = 16
+local defaultWalkspeed = 16
+
+local function applySpeed()
+    if localHum then
+        localHum.WalkSpeed = walkspeedOn and walkspeedValue or defaultWalkspeed
+    end
+end
+
+State:AddConnection(RS.Heartbeat:Connect(function()
+    if walkspeedOn and localHum and localHum.WalkSpeed ~= walkspeedValue then
+        localHum.WalkSpeed = walkspeedValue
+    end
+end))
+
+local tpwalkOn = false
+local tpwalkSpeed = 4
+State:AddConnection(RS.Heartbeat:Connect(function(dt)
+    if tpwalkOn and localRoot and localHum and localHum.MoveDirection.Magnitude > 0 then
+        localRoot.CFrame = localRoot.CFrame + (localHum.MoveDirection * (tpwalkSpeed * 10) * dt)
+    end
+end))
+
+-- noclip
+local noclipOn = false
+local cachedParts = {}
+
+local function indexParts()
+    table.clear(cachedParts)
+    if localChar then
+        for _, p in ipairs(localChar:GetDescendants()) do
+            if p:IsA("BasePart") then table.insert(cachedParts, p) end
+        end
+    end
+end
+
+indexParts()
+State:AddConnection(LocalPlayer.CharacterAdded:Connect(function(c)
+    task.wait(0.2)
+    indexParts()
+    if c then
+        State:AddConnection(c.DescendantAdded:Connect(function(p)
+            if p:IsA("BasePart") then table.insert(cachedParts, p) end
+        end))
+        State:AddConnection(c.DescendantRemoving:Connect(function(p)
+            local i = table.find(cachedParts, p)
+            if i then table.remove(cachedParts, i) end
+        end))
+    end
+end))
+
+State:AddConnection(RS.Stepped:Connect(function()
+    if noclipOn then
+        for i = 1, #cachedParts do
+            local p = cachedParts[i]
+            if p and p.CanCollide then
+                p.CanCollide = false
+            end
+        end
+    end
+end))
+
+-- fly
+local flyOn = false
+local flySpeed = 50
+local flyKey = "C"
+local flyGyro, flyVel, flyLoop = nil, nil, nil
+local flyToggleUI = nil
+local moveKeys = { W = 0, S = 0, A = 0, D = 0, Up = 0, Down = 0 }
+
+local function startFly()
+    if not localRoot or not localHum then return end
+    if flyGyro then pcall(flyGyro.Destroy, flyGyro) end
+    if flyVel then pcall(flyVel.Destroy, flyVel) end
+
+    flyGyro = Instance.new("BodyGyro")
+    flyGyro.P = 9e4
+    flyGyro.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
+    flyGyro.CFrame = localRoot.CFrame
+    flyGyro.Parent = localRoot
+
+    flyVel = Instance.new("BodyVelocity")
+    flyVel.Velocity = Vector3.zero
+    flyVel.MaxForce = Vector3.new(9e9, 9e9, 9e9)
+    flyVel.Parent = localRoot
+
+    localHum.PlatformStand = true
+
+    if flyLoop then flyLoop:Disconnect() end
+    flyLoop = State:AddConnection(RS.RenderStepped:Connect(function()
+        if not flyOn or not localRoot or not localHum or not localRoot.Parent then return end
+        localHum.PlatformStand = true
+        flyGyro.CFrame = Camera.CFrame
+
+        local dir = Vector3.zero
+        local x = moveKeys.D + moveKeys.A
+        local y = moveKeys.Up + moveKeys.Down
+        local z = moveKeys.W + moveKeys.S
+
+        if x ~= 0 or y ~= 0 or z ~= 0 then
+            dir = (Camera.CFrame.LookVector * z + Camera.CFrame.RightVector * x + Vector3.new(0, y, 0)).Unit
+        elseif localHum.MoveDirection.Magnitude > 0 then
+            dir = localHum.MoveDirection
+        end
+
+        flyVel.Velocity = dir * flySpeed
+    end))
+end
+
+local function stopFly()
+    if localHum then localHum.PlatformStand = false end
+    if flyGyro then pcall(flyGyro.Destroy, flyGyro) flyGyro = nil end
+    if flyVel then pcall(flyVel.Destroy, flyVel) flyVel = nil end
+    if flyLoop then flyLoop:Disconnect() flyLoop = nil end
+end
+
+local function toggleFly(val)
+    flyOn = val
+    if val then startFly() else stopFly() end
+end
+
+State:AddConnection(UIS.InputBegan:Connect(function(input, gpe)
+    if gpe then return end
+    local k = input.KeyCode
+    if k == Enum.KeyCode.W then moveKeys.W = 1
+    elseif k == Enum.KeyCode.S then moveKeys.S = -1
+    elseif k == Enum.KeyCode.A then moveKeys.A = -1
+    elseif k == Enum.KeyCode.D then moveKeys.D = 1
+    elseif k == Enum.KeyCode.Space or k == Enum.KeyCode.E then moveKeys.Up = 1
+    elseif k == Enum.KeyCode.LeftShift or k == Enum.KeyCode.Q then moveKeys.Down = -1
+    end
+
+    local name = k.Name
+    if name == flyKey or (#flyKey == 1 and name:lower() == flyKey:lower()) then
+        toggleFly(not flyOn)
+        if flyToggleUI and flyToggleUI.Set then
+            flyToggleUI:Set(flyOn)
+        end
+    end
+end))
+
+State:AddConnection(UIS.InputEnded:Connect(function(input)
+    local k = input.KeyCode
+    if k == Enum.KeyCode.W then moveKeys.W = 0
+    elseif k == Enum.KeyCode.S then moveKeys.S = 0
+    elseif k == Enum.KeyCode.A then moveKeys.A = 0
+    elseif k == Enum.KeyCode.D then moveKeys.D = 0
+    elseif k == Enum.KeyCode.Space or k == Enum.KeyCode.E then moveKeys.Up = 0
+    elseif k == Enum.KeyCode.LeftShift or k == Enum.KeyCode.Q then moveKeys.Down = 0
+    end
+end))
+
+-- ============================================================================
+-- Visuals
+-- ============================================================================
+
+local fullbrightOn = false
+local brightMultiplier = 1.2
+local defaultBright = Lighting.Brightness
+local defaultClock = Lighting.ClockTime
+local defaultShadows = Lighting.GlobalShadows
+local defaultAmbient = Lighting.Ambient
+local defaultOutdoor = Lighting.OutdoorAmbient
+local defaultExposure = Lighting.ExposureCompensation
+
+local noFogOn = false
+local defaultFogEnd = Lighting.FogEnd
+local defaultFogStart = Lighting.FogStart
+
+local noBlurOn = false
+local grayAmbient = Color3.fromRGB(130, 130, 130)
+
+-- lighting loop
+State:AddConnection(RS.RenderStepped:Connect(function()
+    if fullbrightOn then
+        if Lighting.Brightness ~= brightMultiplier then Lighting.Brightness = brightMultiplier end
+        if Lighting.ClockTime ~= 14 then Lighting.ClockTime = 14 end
+        if Lighting.ExposureCompensation ~= 0 then Lighting.ExposureCompensation = 0 end
+        if Lighting.GlobalShadows ~= false then Lighting.GlobalShadows = false end
+        if Lighting.Ambient ~= grayAmbient then Lighting.Ambient = grayAmbient end
+        if Lighting.OutdoorAmbient ~= grayAmbient then Lighting.OutdoorAmbient = grayAmbient end
+    end
+
+    if noFogOn then
+        if Lighting.FogEnd ~= 1e9 then Lighting.FogEnd = 1e9 end
+        if Lighting.FogStart ~= 0 then Lighting.FogStart = 0 end
+        for _, child in ipairs(Lighting:GetChildren()) do
+            if child:IsA("Atmosphere") and child.Density ~= 0 then
+                child.Density = 0
+                child.Haze = 0
+                child.Glare = 0
+                child.Offset = 0
+            end
+        end
+    end
+
+    if noBlurOn then
+        for _, effect in ipairs(Lighting:GetChildren()) do
+            if (effect:IsA("BlurEffect") or effect:IsA("DepthOfFieldEffect")) and effect.Enabled then
+                effect.Enabled = false
+            end
+        end
+        if Camera then
+            for _, effect in ipairs(Camera:GetChildren()) do
+                if (effect:IsA("BlurEffect") or effect:IsA("DepthOfFieldEffect")) and effect.Enabled then
+                    effect.Enabled = false
+                end
+            end
+        end
+    end
+end))
+
+local function resetLighting()
+    Lighting.Brightness = defaultBright
+    Lighting.ClockTime = defaultClock
+    Lighting.GlobalShadows = defaultShadows
+    Lighting.Ambient = defaultAmbient
+    Lighting.OutdoorAmbient = defaultOutdoor
+    Lighting.ExposureCompensation = defaultExposure
+    Lighting.FogEnd = defaultFogEnd
+    Lighting.FogStart = defaultFogStart
+
+    local atm = Lighting:FindFirstChildOfClass("Atmosphere")
+    if atm then atm.Density = 0.72 atm.Haze = 9 atm.Glare = 9 end
+
+    for _, effect in ipairs(Lighting:GetChildren()) do
+        if effect:IsA("BlurEffect") or effect:IsA("DepthOfFieldEffect") then
+            effect.Enabled = true
+        end
+    end
+end
+
+-- ============================================================================
+-- Fast Mining & Auto Swing
+-- ============================================================================
+
+local autoSwingOn = true
+local fastMiningOn = true
+local swingSpeed = 0.12
+local isMouseDown = false
+local swingLoopActive = false
+
+local cachedUseItem = nil
+local cachedMouse1Func = nil
+local cachedDebounceIdx = nil
+local requestItemActionRemote = game.ReplicatedStorage:WaitForChild("InventoryRemotes"):WaitForChild("RequestItemAction")
+
+-- pickaxe power buff
+local function applyPickaxePowerBuffs()
+    pcall(function()
+        local items = game.ReplicatedStorage:FindFirstChild("IngameItems")
+        if items then
+            for _, pName in ipairs({"Pickaxe", "Pickaxe2", "Pickaxe3"}) do
+                local folder = items:FindFirstChild(pName)
+                if folder then
+                    folder:SetAttribute("PickaxePower", 12)
+                end
+            end
+        end
+    end)
+end
+task.spawn(applyPickaxePowerBuffs)
+
+local function getSwingHooks()
+    cachedUseItem = nil
+    cachedMouse1Func = nil
+    cachedDebounceIdx = nil
+    applyPickaxePowerBuffs()
+    if not getgc then return end
+
+    local gc = getgc()
+    for i = 1, #gc do
+        local obj = gc[i]
+        if typeof(obj) == "function" and islclosure(obj) then
+            local info = debug.getinfo(obj)
+            if not cachedUseItem and info.name == "useEquippedItem" and info.source and info.source:find("InventoryManager") then
+                cachedUseItem = obj
+            end
+            if not cachedMouse1Func and info.name == "Mouse1" and info.source and info.source:find("ItemScript") then
+                cachedMouse1Func = obj
+                local upvs = debug.getupvalues(obj)
+                for idx, val in pairs(upvs) do
+                    if typeof(val) == "number" then
+                        cachedDebounceIdx = idx
+                        break
+                    end
+                end
+            end
+        end
+        if cachedUseItem and cachedMouse1Func and cachedDebounceIdx then break end
+    end
+end
+
+task.spawn(getSwingHooks)
+State:AddConnection(LocalPlayer.CharacterAdded:Connect(function()
+    task.wait(0.4)
+    applyPickaxePowerBuffs()
+    getSwingHooks()
+    if walkspeedOn then applySpeed() end
+    if flyOn then startFly() end
+end))
+
+-- hit aim vector
+local function getBestHitDirection(camPos)
+    -- monsters
+    local monsterFolder = WS:FindFirstChild("CurrentMonsters")
+    if monsterFolder then
+        local bestMonster, bestMDist = nil, 14
+        for _, m in ipairs(monsterFolder:GetChildren()) do
+            local part = (m:IsA("Model") and (m.PrimaryPart or m:FindFirstChild("HumanoidRootPart") or m:FindFirstChildWhichIsA("BasePart"))) or (m:IsA("BasePart") and m)
+            if part then
+                local d = (part.Position - camPos).Magnitude
+                if d < bestMDist then
+                    bestMDist = d
+                    bestMonster = part
+                end
+            end
+        end
+        if bestMonster then
+            return (bestMonster.Position - camPos).Unit * 12
+        end
+    end
+
+    -- veins
+    local veinsFolder = WS:FindFirstChild("LocalSanguiniteObjectiveAnchors")
+    if veinsFolder then
+        local bestVein, bestVDist = nil, 16
+        for _, vein in ipairs(veinsFolder:GetChildren()) do
+            local part = (vein:IsA("Model") and (vein.PrimaryPart or vein:FindFirstChildWhichIsA("BasePart"))) or (vein:IsA("BasePart") and vein)
+            if part then
+                local d = (part.Position - camPos).Magnitude
+                if d < bestVDist then
+                    bestVDist = d
+                    bestVein = part
+                end
+            end
+        end
+        if bestVein then
+            return (bestVein.Position - camPos).Unit * 10
+        end
+    end
+
+    return Camera and (Camera.CFrame.LookVector * 10) or Vector3.new(0, 0, -10)
+end
+
+local function swingOnce()
+    if not cachedUseItem or not cachedMouse1Func then
+        getSwingHooks()
+    end
+
+    -- clear debounce
+    if cachedMouse1Func and cachedDebounceIdx then
+        debug.setupvalue(cachedMouse1Func, cachedDebounceIdx, 0)
+    end
+    if cachedUseItem then
+        pcall(cachedUseItem)
+    end
+
+    -- direct hit packet
+    if fastMiningOn and requestItemActionRemote and Camera then
+        local camPos = Camera.CFrame.Position
+        local dir = getBestHitDirection(camPos)
+        requestItemActionRemote:FireServer("PickaxeMine", {
+            Origin = camPos,
+            Direction = dir,
+            Power = 12
+        })
+    end
+end
+
+local function runSwingLoop()
+    if swingLoopActive or not autoSwingOn or isGuiOpen then return end
+    swingLoopActive = true
+    State:AddThread(task.spawn(function()
+        while isMouseDown and autoSwingOn and not isGuiOpen do
+            swingOnce()
+            task.wait(swingSpeed)
+        end
+        swingLoopActive = false
+    end))
+end
+
+State:AddConnection(UIS.InputBegan:Connect(function(input, gpe)
+    if gpe or isGuiOpen then return end
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        isMouseDown = true
+        runSwingLoop()
+    end
+end))
+
+State:AddConnection(UIS.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        isMouseDown = false
+    end
+end))
+
+-- ============================================================================
+-- Instant Interact
+-- ============================================================================
+
+local instantInteractOn = true
+
+local function applyInstantInteract()
+    if not getgc then return end
+    local gc = getgc()
+    for i = 1, #gc do
+        local obj = gc[i]
+        if typeof(obj) == "function" and islclosure(obj) then
+            local info = debug.getinfo(obj)
+            if info.source and info.source:find("InventoryManager") then
+                local upvs = debug.getupvalues(obj)
+                for idx, val in pairs(upvs) do
+                    if typeof(val) == "table" then
+                        for k, v in pairs(val) do
+                            if typeof(v) == "table" and (v.HoldDuration ~= nil or v.HoldToActivate ~= nil) then
+                                if instantInteractOn then
+                                    v.HoldToActivate = false
+                                    v.HoldDuration = 0
+                                else
+                                    v.HoldToActivate = true
+                                    v.HoldDuration = 1.1
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    -- prompts
+    for _, p in ipairs(WS:GetDescendants()) do
+        if p:IsA("ProximityPrompt") then
+            if instantInteractOn then
+                if not p:GetAttribute("OriginalHold") then
+                    p:SetAttribute("OriginalHold", p.HoldDuration)
+                end
+                p.HoldDuration = 0
+            else
+                local orig = p:GetAttribute("OriginalHold")
+                if orig then p.HoldDuration = orig end
+            end
+        end
+    end
+end
+
+task.spawn(applyInstantInteract)
+State:AddConnection(LocalPlayer.CharacterAdded:Connect(function()
+    task.wait(0.5)
+    if instantInteractOn then applyInstantInteract() end
+end))
+
+State:AddConnection(WS.DescendantAdded:Connect(function(desc)
+    if instantInteractOn and desc:IsA("ProximityPrompt") then
+        task.defer(function()
+            if not desc:GetAttribute("OriginalHold") then
+                desc:SetAttribute("OriginalHold", desc.HoldDuration)
+            end
+            desc.HoldDuration = 0
+        end)
+    end
+end))
+
+-- ============================================================================
+-- ESP
+-- ============================================================================
+
+local playerEspOn = false
+local monsterEspOn = false
+local bellEspOn = false
+local veinEspOn = false
+
+-- colors
+local CRIMSON_OUTLINE = Color3.fromRGB(220, 20, 60)
+local PLAYER_COLOR = Color3.fromRGB(56, 189, 248)
+local BELL_COLOR = Color3.fromRGB(56, 189, 248)
+local VEIN_COLOR = Color3.fromRGB(250, 204, 21)
+
+local function isDumbProp(obj)
+    if not obj or not obj.Name then return false end
+    local n = obj.Name:lower()
+    return n:find("chillbrine") ~= nil or n:find("chill_brine") ~= nil
+end
+
+local function getMonsterName(obj)
+    if not obj or not obj.Name then return "Monster" end
+    local n = obj.Name:lower()
+    if n:find("hook") then return "Fishing Hook" end
+    return obj.Name
+end
+
+local function addHighlight(target, fillColor, outlineColor, name)
+    local old = target:FindFirstChild(name)
+    if old then old:Destroy() end
+
+    local h = Instance.new("Highlight")
+    h.Name = name
+    h.FillTransparency = 0.85
+    h.FillColor = fillColor
+    h.OutlineTransparency = 0
+    h.OutlineColor = outlineColor or Color3.fromRGB(255, 255, 255)
+    h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    h.Adornee = target
+    h.Parent = target
+    return h
+end
+
+local function addBillboard(target, name, text, hexColor, offset)
+    local root = (target:IsA("Model") and (target.PrimaryPart or target:FindFirstChild("HumanoidRootPart") or target:FindFirstChildWhichIsA("BasePart"))) or (target:IsA("BasePart") and target)
+    if not root then return nil, nil end
+
+    local old = root:FindFirstChild(name)
+    if old then old:Destroy() end
+
+    local bb = Instance.new("BillboardGui")
+    bb.Name = name
+    bb.Size = UDim2.new(0, 180, 0, 22)
+    bb.StudsOffset = offset or Vector3.new(0, 3, 0)
+    bb.AlwaysOnTop = true
+    bb.MaxDistance = 8000
+    bb.Adornee = root
+    bb.Parent = root
+
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1, 0, 1, 0)
+    lbl.BackgroundTransparency = 1
+    lbl.TextColor3 = Color3.fromRGB(255, 255, 255)
+    lbl.TextStrokeTransparency = 0.2
+    lbl.Font = Enum.Font.FredokaOne
+    lbl.TextSize = 12
+    lbl.RichText = true
+    lbl.Text = string.format("<font color='#%s'><b>%s</b></font>", hexColor, text)
+    lbl.Parent = bb
+    return bb, lbl
+end
+
+-- player esp
+local function attachPlayerEsp(char, player)
+    if not playerEspOn or not char or char == localChar then return end
+    local col = (player.Team and player.TeamColor.Color) or PLAYER_COLOR
+    local h = addHighlight(char, col, Color3.fromRGB(255, 255, 255), "Player_ESPHighlight")
+    local b, lbl = addBillboard(char, "Player_ESPBillboard", player.DisplayName or player.Name, "38bdf8", Vector3.new(0, 3.2, 0))
+    State.PlayerESP[char] = { Highlight = h, Billboard = b, Label = lbl, Player = player, Target = char, LastDist = -1, LastHP = -1 }
+end
+
+local function removePlayerEsp(char)
+    local data = State.PlayerESP[char]
+    if data then
+        if data.Highlight then pcall(data.Highlight.Destroy, data.Highlight) end
+        if data.Billboard then pcall(data.Billboard.Destroy, data.Billboard) end
+        State.PlayerESP[char] = nil
+    end
+end
+
+-- monster esp
+local function attachMonsterEsp(character)
+    if not monsterEspOn or not character or character == localChar then return end
+    if Players:GetPlayerFromCharacter(character) then return end
+    if isDumbProp(character) or State.MonsterESP[character] then return end
+
+    local name = getMonsterName(character)
+    local h = addHighlight(character, CRIMSON_OUTLINE, CRIMSON_OUTLINE, "NPC_ESPHighlight")
+    local b, lbl = addBillboard(character, "Monster_ESPBillboard", name, "dc143c", Vector3.new(0, 3.5, 0))
+    State.MonsterESP[character] = { Highlight = h, Billboard = b, Label = lbl, BaseName = name, Target = character, LastDist = -1, LastHP = -1 }
+end
+
+local function removeMonsterEsp(character)
+    local data = State.MonsterESP[character]
+    if data then
+        if data.Highlight then pcall(data.Highlight.Destroy, data.Highlight) end
+        if data.Billboard then pcall(data.Billboard.Destroy, data.Billboard) end
+        State.MonsterESP[character] = nil
+    end
+end
+
+-- scan npcs
+local function scanAllNPCs()
+    if not monsterEspOn then return end
+
+    for _, item in ipairs(WS:GetDescendants()) do
+        if item:IsA("Humanoid") and item.Parent then
+            attachMonsterEsp(item.Parent)
+        end
+    end
+
+    local hooks = WS:FindFirstChild("TheHooks")
+    if hooks then
+        for _, h in ipairs(hooks:GetChildren()) do
+            attachMonsterEsp(h)
+        end
+    end
+    for _, item in ipairs(WS:GetChildren()) do
+        if item.Name:lower():find("hook") and item ~= hooks then
+            attachMonsterEsp(item)
+        end
+    end
+end
+
+-- dynamic spawn listener
+State:AddConnection(WS.DescendantAdded:Connect(function(descendant)
+    if not monsterEspOn then return end
+
+    if descendant:IsA("Humanoid") then
+        task.defer(function()
+            if descendant.Parent then
+                attachMonsterEsp(descendant.Parent)
+            end
+        end)
+    elseif descendant.Name:lower():find("hook") or (descendant.Parent and descendant.Parent.Name == "TheHooks") then
+        task.defer(function()
+            attachMonsterEsp(descendant)
+        end)
+    end
+end))
+
+-- world esp
+local function attachWorldEsp(target, label, color)
+    if not target or not target.Parent or State.WorldESP[target] then return end
+    local h = addHighlight(target, color, Color3.fromRGB(255, 255, 255), "World_ESPHighlight")
+    local b, lbl = addBillboard(target, "World_ESPBillboard", label, color:ToHex(), Vector3.new(0, 3.5, 0))
+    State.WorldESP[target] = { Highlight = h, Billboard = b, Label = lbl, BaseText = label, ColorHex = color:ToHex(), Target = target, LastDist = -1 }
+end
+
+local function removeWorldEsp(target)
+    local data = State.WorldESP[target]
+    if data then
+        if data.Highlight then pcall(data.Highlight.Destroy, data.Highlight) end
+        if data.Billboard then pcall(data.Billboard.Destroy, data.Billboard) end
+        State.WorldESP[target] = nil
+    end
+end
+
+-- player listeners
+local function watchPlayer(p)
+    if p == LocalPlayer then return end
+    if p.Character and playerEspOn then attachPlayerEsp(p.Character, p) end
+    State:AddConnection(p.CharacterAdded:Connect(function(c)
+        if playerEspOn then attachPlayerEsp(c, p) end
+    end))
+end
+
+for _, p in ipairs(Players:GetPlayers()) do watchPlayer(p) end
+State:AddConnection(Players.PlayerAdded:Connect(watchPlayer))
+State:AddConnection(Players.PlayerRemoving:Connect(function(p)
+    if p.Character then removePlayerEsp(p.Character) end
+end))
+
+-- esp update loop
+State:AddThread(task.spawn(function()
+    while true do
+        task.wait(0.10)
+        local myPos = (localRoot and localRoot.Position) or (Camera and Camera.CFrame.Position)
+
+        if myPos then
+            -- update players
+            if playerEspOn then
+                for char, data in pairs(State.PlayerESP) do
+                    if not char or not char.Parent or not Players:GetPlayerFromCharacter(char) then
+                        removePlayerEsp(char)
+                    elseif data.Label then
+                        local root = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChildWhichIsA("BasePart")
+                        local hum = char:FindFirstChildOfClass("Humanoid")
+                        if root then
+                            local dist = math.floor((root.Position - myPos).Magnitude)
+                            local hp = (hum and hum.Health > 0) and math.floor(hum.Health) or 0
+                            if dist ~= data.LastDist or hp ~= data.LastHP then
+                                data.LastDist = dist
+                                data.LastHP = hp
+                                local hpText = hp > 0 and string.format(" <font color='#86efac'>[%d HP]</font>", hp) or ""
+                                data.Label.Text = string.format("<font color='#38bdf8'><b>%s</b></font>%s <font color='#fde047'>[%dm]</font>", data.Player.DisplayName or data.Player.Name, hpText, dist)
+                            end
+                        end
+                    end
+                end
+            end
+
+            -- update monsters
+            if monsterEspOn then
+                for char, data in pairs(State.MonsterESP) do
+                    if not char or not char.Parent then
+                        removeMonsterEsp(char)
+                    elseif data.Label then
+                        local root = (char:IsA("Model") and (char.PrimaryPart or char:FindFirstChild("HumanoidRootPart") or char:FindFirstChildWhichIsA("BasePart"))) or (char:IsA("BasePart") and char)
+                        local hum = char:FindFirstChildOfClass("Humanoid")
+                        if root then
+                            local dist = math.floor((root.Position - myPos).Magnitude)
+                            local hp = (hum and hum.Health > 0) and math.floor(hum.Health) or 0
+                            if dist ~= data.LastDist or hp ~= data.LastHP then
+                                data.LastDist = dist
+                                data.LastHP = hp
+                                local hpText = hp > 0 and string.format(" <font color='#93c5fd'>[%d HP]</font>", hp) or ""
+                                data.Label.Text = string.format("<font color='#dc143c'><b>%s</b></font>%s <font color='#fde047'>[%dm]</font>", data.BaseName, hpText, dist)
+                            end
+                        end
+                    end
+                end
+            end
+
+            -- update bell and veins
+            if bellEspOn then
+                local bell = WS:FindFirstChild("DivingBell")
+                if bell and not State.WorldESP[bell] then
+                    attachWorldEsp(bell, "Diving Bell", BELL_COLOR)
+                end
+            end
+
+            if veinEspOn then
+                local veins = WS:FindFirstChild("LocalSanguiniteObjectiveAnchors")
+                if veins then
+                    for _, vein in ipairs(veins:GetChildren()) do
+                        if not State.WorldESP[vein] then
+                            attachWorldEsp(vein, "Vein", VEIN_COLOR)
+                        end
+                    end
+                end
+            end
+
+            for target, data in pairs(State.WorldESP) do
+                if not target or not target.Parent then
+                    removeWorldEsp(target)
+                elseif data.Label then
+                    local part = (target:IsA("Model") and (target.PrimaryPart or target:FindFirstChildWhichIsA("BasePart"))) or (target:IsA("BasePart") and target)
+                    if part then
+                        local dist = math.floor((part.Position - myPos).Magnitude)
+                        if dist ~= data.LastDist then
+                            data.LastDist = dist
+                            data.Label.Text = string.format("<font color='#%s'><b>%s</b></font> <font color='#fde047'>[%dm]</font>", data.ColorHex, data.BaseText, dist)
+                        end
+                    end
+                end
+            end
+        end
+    end
+end))
+
+-- ============================================================================
+-- Teleports
+-- ============================================================================
+
+-- safe bell interior
+local function getSafeBellPos()
+    local bell = WS:FindFirstChild("DivingBell")
+    if not bell then return nil end
+    local storage = bell:FindFirstChild("SangStorage")
+    local interactPart = storage and storage:FindFirstChild("InteractPart")
+    if interactPart then return interactPart.CFrame + Vector3.new(0, 2.5, 3.5) end
+
+    local shop = bell:FindFirstChild("ShopHatch")
+    if shop then return shop.CFrame + Vector3.new(3, 2.5, 0) end
+
+    local core = bell.PrimaryPart or bell:FindFirstChildWhichIsA("BasePart")
+    if core then return core.CFrame + Vector3.new(-8, 5, -8) end
+    return nil
+end
+
+local function tpTo(target, heightOffset)
+    if not localRoot then return end
+    local yOff = heightOffset or 3.0
+    if typeof(target) == "CFrame" then
+        localRoot.CFrame = target + Vector3.new(0, yOff, 0)
+    elseif typeof(target) == "Vector3" then
+        localRoot.CFrame = CFrame.new(target + Vector3.new(0, yOff, 0))
+    elseif typeof(target) == "Instance" then
+        local part = (target:IsA("Model") and (target.PrimaryPart or target:FindFirstChildWhichIsA("BasePart"))) or (target:IsA("BasePart") and target)
+        if part then
+            local rayP = RaycastParams.new()
+            if localChar then rayP.FilterDescendantsInstances = { localChar } end
+            local hit = WS:Raycast(part.Position + Vector3.new(0, 15, 0), Vector3.new(0, -25, 0), rayP)
+            if hit and hit.Position then
+                localRoot.CFrame = CFrame.new(hit.Position + Vector3.new(0, yOff, 0))
+            else
+                localRoot.CFrame = part.CFrame + Vector3.new(0, math.max(yOff, 4.5), 0)
+            end
+        end
+    end
+end
+
+-- click tp
+local clickTpOn = false
+local rayParams = RaycastParams.new()
+rayParams.FilterType = Enum.RaycastFilterType.Exclude
+
+State:AddConnection(UIS.InputBegan:Connect(function(input, gpe)
+    if gpe or not clickTpOn or isGuiOpen then return end
+    if input.UserInputType == Enum.UserInputType.MouseButton1 and UIS:IsKeyDown(Enum.KeyCode.LeftControl) then
+        local mousePos = UIS:GetMouseLocation()
+        local ray = Camera:ViewportPointToRay(mousePos.X, mousePos.Y)
+        if localChar then rayParams.FilterDescendantsInstances = { localChar } end
+        local res = WS:Raycast(ray.Origin, ray.Direction * 3000, rayParams)
+        if res and res.Position then
+            tpTo(res.Position)
+        end
+    end
+end))
+
+-- ============================================================================
+-- Auto Deposit
+-- ============================================================================
+
+local autoDepositOn = false
+local isDepositing = false
+local depositAtPercent = 100
+local statusCardUI = nil
+local storeSangRemote = game.ReplicatedStorage.InventoryRemotes:FindFirstChild("StoreSang")
+
+local function getStats() return LocalPlayer:FindFirstChild("Stats") end
+local function getSangCount() local s = getStats() local v = s and s:FindFirstChild("CurrentSanguinite") return v and v.Value or 0 end
+local function getSangCap() local s = getStats() local v = s and s:FindFirstChild("SanguiniteCapacity") return v and v.Value or 100 end
+local function getSangPercent() local cap = getSangCap() if cap <= 0 then return 0 end return math.floor((getSangCount() / cap) * 100) end
+local function getDepositDoor() local bell = WS:FindFirstChild("DivingBell") local storage = bell and bell:FindFirstChild("SangStorage") return storage and storage:FindFirstChild("InteractPart") end
+
+local function updateStatusText(txt)
+    if statusCardUI and statusCardUI.SetDesc then
+        pcall(statusCardUI.SetDesc, statusCardUI, txt)
+    end
+end
+
+local function depositNow(onStatus)
+    if not localRoot then return end
+    local door = getDepositDoor()
+    if not door then
+        if onStatus then onStatus("Deposit door not found!") end
+        return
+    end
+
+    local myOldPos = localRoot.CFrame
+    if onStatus then onStatus("Teleporting to deposit...") end
+    localRoot.CFrame = door.CFrame + Vector3.new(0, 2, 2)
+    task.wait(0.35)
+
+    if onStatus then onStatus("Selling Sanguinite...") end
+    if storeSangRemote then storeSangRemote:FireServer() end
+    task.wait(0.45)
+
+    if localRoot then localRoot.CFrame = myOldPos end
+    task.wait(0.20)
+    if onStatus then onStatus("Done! Current Sang: " .. getSangPercent() .. "%") end
+end
+
+-- ============================================================================
+-- UI Setup
+-- ============================================================================
+
+local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
+
+local Window = WindUI:CreateWindow({
+    Title = "Hzyl Hub",
+    Icon = "user",
+    Author = "for Saturation Diving",
+    Folder = "WindUI_Visuals",
+    Size = UDim2.fromOffset(590, 510),
+    Transparent = true,
+    Theme = "Dark",
+    SideBarWidth = 160,
+    HasOutline = true
+})
+State.Window = Window
+
+task.spawn(function()
+    task.wait(0.20)
+    for _, gui in ipairs(CoreGui:GetDescendants()) do
+        if gui:IsA("ScreenGui") and gui.Name:find("WindUI") then
+            setTopmost(gui)
+        end
+    end
+    if Window.SetToTheCenter then Window:SetToTheCenter() end
+    if Window.Open then Window:Open() end
+    isGuiOpen = true
+end)
+
+-- tabs
+local LocalTab    = Window:Tab({Title="Local",    Icon="user"})
+local ESPTab      = Window:Tab({Title="ESP",      Icon="eye"})
+local TeleportTab = Window:Tab({Title="Teleport", Icon="map-pin"})
+local AutoTab     = Window:Tab({Title="Auto",     Icon="refresh-cw"})
+local ConfigTab   = Window:Tab({Title="Config",   Icon="settings"})
+
+local UI = {}
+
+-- === LOCAL TAB ===
+LocalTab:Section({Title="Speed", TextXAlignment="Left"})
+UI.Walkspeed = LocalTab:Toggle({Title="Walkspeed", Desc="Run faster than normal", Value=false, Callback=function(s) walkspeedOn = s applySpeed() end})
+UI.WalkspeedAmount = LocalTab:Slider({Title="Walkspeed Amount", Desc="How fast you run", Value={Min=16, Max=200, Default=16}, Step=1, Callback=function(v) walkspeedValue = v if walkspeedOn then applySpeed() end end})
+UI.TPWalk = LocalTab:Toggle({Title="TPWalk", Desc="Teleport-walk through slow water or mud", Value=false, Callback=function(s) tpwalkOn = s end})
+UI.TPWalkSpeed = LocalTab:Slider({Title="TPWalk Speed", Desc="How far you jump each step", Value={Min=1, Max=40, Default=4}, Step=1, Callback=function(v) tpwalkSpeed = v end})
+
+LocalTab:Section({Title="Flight & Walls", TextXAlignment="Left"})
+UI.Noclip = LocalTab:Toggle({Title="Noclip", Desc="Walk straight through walls", Value=false, Callback=function(s) noclipOn = s end})
+flyToggleUI = LocalTab:Toggle({Title="Fly", Desc="Float in the air (WASD + Space/Shift to move)", Value=false, Callback=function(s) toggleFly(s) end})
+UI.Fly = flyToggleUI
+UI.FlyKey = LocalTab:Keybind({Title="Fly Key", Desc="Key to turn fly on/off", Value="C", Callback=function(k) flyKey = tostring(k) end})
+UI.FlySpeed = LocalTab:Slider({Title="Fly Speed", Desc="How fast you fly around", Value={Min=10, Max=250, Default=50}, Step=5, Callback=function(v) flySpeed = v end})
+
+LocalTab:Section({Title="Visuals & Lighting", TextXAlignment="Left"})
+UI.Fullbright = LocalTab:Toggle({Title="Fullbright & Day", Desc="Makes everything bright like daytime", Value=false, Callback=function(s) fullbrightOn = s if not s then resetLighting() end end})
+UI.Brightness = LocalTab:Slider({Title="Brightness", Desc="Adjust brightness multiplier", Value={Min=0.5, Max=2.5, Default=1.2}, Step=0.1, Callback=function(v) brightMultiplier = v end})
+UI.NoFog = LocalTab:Toggle({Title="No Fog", Desc="Removes murky underwater fog", Value=false, Callback=function(s) noFogOn = s if not s then resetLighting() end end})
+UI.NoBlur = LocalTab:Toggle({Title="No Blur", Desc="Removes blur effects underwater", Value=false, Callback=function(s) noBlurOn = s if not s then resetLighting() end end})
+
+-- === ESP TAB ===
+ESPTab:Section({Title="Creatures & Hazards", TextXAlignment="Left"})
+UI.MonsterESP = ESPTab:Toggle({
+    Title="Monster ESP",
+    Desc="See monsters and fishing hooks with crimson outline, distance and health",
+    Value=false,
+    Callback=function(s)
+        monsterEspOn = s
+        if s then
+            scanAllNPCs()
+        else
+            for c in pairs(State.MonsterESP) do removeMonsterEsp(c) end
+        end
+    end
+})
+UI.PlayerESP = ESPTab:Toggle({
+    Title="Player ESP",
+    Desc="See other divers with distance and health",
+    Value=false,
+    Callback=function(s)
+        playerEspOn = s
+        if not s then for c in pairs(State.PlayerESP) do removePlayerEsp(c) end end
+    end
+})
+
+ESPTab:Section({Title="World Objects", TextXAlignment="Left"})
+UI.DivingBellESP = ESPTab:Toggle({
+    Title="Diving Bell ESP",
+    Desc="See your submarine base with distance indicator",
+    Value=false,
+    Callback=function(s)
+        bellEspOn = s
+        if not s then local b = WS:FindFirstChild("DivingBell") if b then removeWorldEsp(b) end end
+    end
+})
+UI.VeinsESP = ESPTab:Toggle({
+    Title="Sanguinite Veins ESP",
+    Desc="See mining objectives with distance indicators",
+    Value=false,
+    Callback=function(s)
+        veinEspOn = s
+        if not s then
+            local of = WS:FindFirstChild("LocalSanguiniteObjectiveAnchors")
+            if of then for _, o in ipairs(of:GetChildren()) do removeWorldEsp(o) end end
+        end
+    end
+})
+
+-- === TELEPORT TAB ===
+TeleportTab:Section({Title="Quick Teleport", TextXAlignment="Left"})
+TeleportTab:Button({
+    Title="Go to Diving Bell",
+    Desc="Teleport safely onto the dry metal floor inside the base",
+    Callback=function()
+        local safeCF = getSafeBellPos()
+        if safeCF and localRoot then
+            localRoot.CFrame = safeCF
+            WindUI:Notify({Title="Teleport", Content="Teleported inside the Diving Bell!", Duration=3})
+        else
+            WindUI:Notify({Title="Teleport", Content="Diving Bell not found.", Duration=3})
+        end
+    end
+})
+TeleportTab:Button({
+    Title="Go to Nearest Vein",
+    Desc="Teleport to the closest Sanguinite rock",
+    Callback=function()
+        local of = WS:FindFirstChild("LocalSanguiniteObjectiveAnchors")
+        if localRoot and of then
+            local closest, cd = nil, math.huge
+            for _, obj in ipairs(of:GetChildren()) do
+                local part = (obj:IsA("Model") and (obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart"))) or (obj:IsA("BasePart") and obj)
+                if part then
+                    local d = (part.Position - localRoot.Position).Magnitude
+                    if d < cd then cd = d closest = part end
+                end
+            end
+            if closest then
+                tpTo(closest, 4.5)
+                WindUI:Notify({Title="Teleport", Content="Teleported to nearest vein!", Duration=3})
+            else
+                WindUI:Notify({Title="Teleport", Content="No veins found.", Duration=3})
+            end
+        else
+            WindUI:Notify({Title="Teleport", Content="No veins found or character not ready.", Duration=3})
+        end
+    end
+})
+
+TeleportTab:Section({Title="Click Teleport", TextXAlignment="Left"})
+UI.ClickTP = TeleportTab:Toggle({Title="Click TP (Ctrl + Click)", Desc="Hold Ctrl and left-click anywhere to teleport there", Value=false, Callback=function(s) clickTpOn = s end})
+
+TeleportTab:Section({Title="Players", TextXAlignment="Left"})
+local function getPlayers()
+    local list = {}
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer then table.insert(list, p.Name) end
+    end
+    if #list == 0 then table.insert(list, "No players") end
+    return list
+end
+
+local targetPlayerName = nil
+local playerDropdown = TeleportTab:Dropdown({
+    Title="Select Player",
+    Values=getPlayers(),
+    Value=getPlayers()[1],
+    Callback=function(v) targetPlayerName = v end
+})
+
+TeleportTab:Button({
+    Title="Teleport to Player",
+    Desc="Teleport to the player selected above",
+    Callback=function()
+        if targetPlayerName and targetPlayerName ~= "No players" then
+            local p = Players:FindFirstChild(targetPlayerName)
+            if p and p.Character then
+                tpTo(p.Character)
+                WindUI:Notify({Title="Teleport", Content="Teleported to " .. targetPlayerName .. "!", Duration=3})
+            else
+                WindUI:Notify({Title="Teleport", Content="Player has no character loaded.", Duration=3})
+            end
+        else
+            WindUI:Notify({Title="Teleport", Content="Select a player first.", Duration=3})
+        end
+    end
+})
+State:AddConnection(Players.PlayerAdded:Connect(function() if playerDropdown and playerDropdown.Refresh then playerDropdown:Refresh(getPlayers()) end end))
+State:AddConnection(Players.PlayerRemoving:Connect(function() if playerDropdown and playerDropdown.Refresh then playerDropdown:Refresh(getPlayers()) end end))
+
+-- === AUTO TAB ===
+AutoTab:Section({Title="Status", TextXAlignment="Left"})
+statusCardUI = AutoTab:Paragraph({
+    Title = "Auto Deposit Status",
+    Desc = "Idle (Turn on Auto Deposit below to start)"
+})
+
+AutoTab:Section({Title="Auto Deposit", TextXAlignment="Left"})
+UI.AutoDeposit = AutoTab:Toggle({
+    Title="Auto Deposit Sanguinite",
+    Desc="When your Sang bar hits trigger %, auto-teleports to sell and comes back",
+    Value=false,
+    Callback=function(s)
+        autoDepositOn = s
+        if s then
+            updateStatusText("Watching Sang bar... (" .. getSangPercent() .. "%)")
+            if not State._depositLoop then
+                State._depositLoop = State:AddConnection(RS.Heartbeat:Connect(function()
+                    if not autoDepositOn or isDepositing then return end
+                    if getSangPercent() >= depositAtPercent then
+                        isDepositing = true
+                        task.spawn(function()
+                            depositNow(updateStatusText)
+                            isDepositing = false
+                            if autoDepositOn then
+                                updateStatusText("Watching Sang bar... (" .. getSangPercent() .. "%)")
+                            end
+                        end)
+                    end
+                end))
+            end
+        else
+            updateStatusText("Idle (Turn on Auto Deposit below to start)")
+            if State._depositLoop then
+                State._depositLoop:Disconnect()
+                State._depositLoop = nil
+            end
+        end
+    end
+})
+UI.DepositThreshold = AutoTab:Slider({
+    Title="Deposit at %",
+    Desc="Auto deposit when your bag reaches this %",
+    Value={Min=50, Max=100, Default=100},
+    Step=5,
+    Callback=function(v) depositAtPercent = v end
+})
+AutoTab:Button({
+    Title="Deposit Now",
+    Desc="Instantly sell your Sang right now and return to your spot",
+    Callback=function()
+        if isDepositing then
+            WindUI:Notify({Title="Auto", Content="Already depositing!", Duration=2})
+            return
+        end
+        isDepositing = true
+        task.spawn(function()
+            depositNow(function(msg)
+                updateStatusText(msg)
+                WindUI:Notify({Title="Deposit", Content=msg, Duration=2})
+            end)
+            isDepositing = false
+            if autoDepositOn then
+                updateStatusText("Watching Sang bar... (" .. getSangPercent() .. "%)")
+            else
+                updateStatusText("Idle")
+            end
+        end)
+    end
+})
+
+AutoTab:Section({Title="Fast Mining & Auto Swing", TextXAlignment="Left"})
+UI.FastMining = AutoTab:Toggle({
+    Title="High-Damage Mining (Power 12)",
+    Desc="Buffs pickaxe power to max 12 & sends direct hit packets to break rocks in 1-2 hits",
+    Value=true,
+    Callback=function(s)
+        fastMiningOn = s
+        if s then applyPickaxePowerBuffs() end
+    end
+})
+UI.HoldSwing = AutoTab:Toggle({
+    Title="Hold to Auto Swing",
+    Desc="Hold left click down to continuously swing pickaxe/weapons at max speed",
+    Value=true,
+    Callback=function(s) autoSwingOn = s end
+})
+UI.HoldSwingInterval = AutoTab:Slider({
+    Title="Swing & Mine Speed",
+    Desc="Delay between hits while holding click (lower = faster damage)",
+    Value={Min=0.06, Max=0.30, Default=0.12},
+    Step=0.02,
+    Callback=function(v) swingSpeed = v end
+})
+AutoTab:Button({
+    Title="Check Sang Bar",
+    Desc="Show current Sanguinite vs capacity",
+    Callback=function()
+        local cur = getSangCount()
+        local cap = getSangCap()
+        local pct = getSangPercent()
+        WindUI:Notify({
+            Title="Sanguinite Bar",
+            Content=string.format("%d / %d (%d%%) — %s", cur, cap, pct, pct >= depositAtPercent and "READY TO DEPOSIT!" or "Not full"),
+            Duration=5
+        })
+    end
+})
+
+AutoTab:Section({Title="Interaction", TextXAlignment="Left"})
+UI.InstantInteract = AutoTab:Toggle({
+    Title="Instant Interact (Leave Button & Prompts)",
+    Desc="Removes the hold timer so pressing E triggers the Leave button and interactables instantly",
+    Value=true,
+    Callback=function(s)
+        instantInteractOn = s
+        applyInstantInteract()
+    end
+})
+
+-- === CONFIG TAB ===
+local activeConfigName = "default"
+local configFolder = "WindUI_Visuals/configs"
+
+local function makeConfigFolder()
+    if not isfolder("WindUI_Visuals") then pcall(makefolder, "WindUI_Visuals") end
+    if not isfolder(configFolder) then pcall(makefolder, configFolder) end
+end
+
+local function listSavedConfigs()
+    makeConfigFolder()
+    local list = {}
+    if listfiles then
+        local ok, files = pcall(listfiles, configFolder)
+        if ok and files then
+            for _, path in ipairs(files) do
+                local name = path:match("([^/\\]+)%.json$")
+                if name then table.insert(list, name) end
+            end
+        end
+    end
+    if #list == 0 then table.insert(list, "default") end
+    return list
+end
+
+local currentTheme = WindUI.Theme and WindUI.Theme.Name or "Dark"
+local allThemes = {"Dark","Midnight","Emerald","Sky","Rose","MonokaiPro","Crimson","Violet","Plant","Amber","Indigo","CottonCandy","Red","Light","Rainbow","Mellowsi"}
+
+ConfigTab:Section({Title="Profile Manager", TextXAlignment="Left"})
+local configNameInput = ConfigTab:Input({
+    Title="Config Name",
+    Desc="Name of your settings profile",
+    Value="default",
+    Placeholder="e.g. default, mining, farming",
+    Callback=function(v)
+        if v and #v > 0 then activeConfigName = v end
+    end
+})
+
+local configDropdown = nil
+configDropdown = ConfigTab:Dropdown({
+    Title="Select Config",
+    Values=listSavedConfigs(),
+    Value=listSavedConfigs()[1],
+    Callback=function(v)
+        activeConfigName = v
+        if configNameInput and configNameInput.Set then configNameInput:Set(v) end
+    end
+})
+
+local function refreshConfigs()
+    if configDropdown and configDropdown.Refresh then
+        configDropdown:Refresh(listSavedConfigs())
+    end
+end
+
+ConfigTab:Button({
+    Title="Save Config",
+    Desc="Save your current toggles and sliders to file",
+    Callback=function()
+        makeConfigFolder()
+        local data = {
+            Walkspeed = walkspeedOn,
+            WalkspeedAmount = walkspeedValue,
+            TPWalk = tpwalkOn,
+            TPWalkSpeed = tpwalkSpeed,
+            Noclip = noclipOn,
+            Fly = flyOn,
+            FlyKey = flyKey,
+            FlySpeed = flySpeed,
+            Fullbright = fullbrightOn,
+            Brightness = brightMultiplier,
+            NoFog = noFogOn,
+            NoBlur = noBlurOn,
+            MonsterESP = monsterEspOn,
+            PlayerESP = playerEspOn,
+            DivingBellESP = bellEspOn,
+            VeinsESP = veinEspOn,
+            ClickTP = clickTpOn,
+            AutoDeposit = autoDepositOn,
+            DepositThreshold = depositAtPercent,
+            FastMining = fastMiningOn,
+            InstantInteract = instantInteractOn,
+            HoldSwing = autoSwingOn,
+            HoldSwingInterval = swingSpeed,
+            GuiKey = guiKey,
+            Theme = currentTheme
+        }
+        local path = configFolder .. "/" .. activeConfigName .. ".json"
+        writefile(path, HttpService:JSONEncode(data))
+        refreshConfigs()
+        WindUI:Notify({Title="Config", Content="Saved profile: " .. activeConfigName, Duration=3, Icon="check"})
+    end
+})
+
+ConfigTab:Button({
+    Title="Load Config",
+    Desc="Load all settings from selected profile",
+    Callback=function()
+        makeConfigFolder()
+        local path = configFolder .. "/" .. activeConfigName .. ".json"
+        if not isfile(path) then
+            WindUI:Notify({Title="Config", Content="File not found: " .. activeConfigName, Duration=3})
+            return
+        end
+        local ok, data = pcall(function() return HttpService:JSONDecode(readfile(path)) end)
+        if not ok or not data then
+            WindUI:Notify({Title="Config", Content="Could not read profile JSON.", Duration=3})
+            return
+        end
+
+        pcall(function()
+            if data.Walkspeed ~= nil and UI.Walkspeed then UI.Walkspeed:Set(data.Walkspeed) end
+            if data.WalkspeedAmount ~= nil and UI.WalkspeedAmount then UI.WalkspeedAmount:Set(data.WalkspeedAmount) end
+            if data.TPWalk ~= nil and UI.TPWalk then UI.TPWalk:Set(data.TPWalk) end
+            if data.TPWalkSpeed ~= nil and UI.TPWalkSpeed then UI.TPWalkSpeed:Set(data.TPWalkSpeed) end
+            if data.Noclip ~= nil and UI.Noclip then UI.Noclip:Set(data.Noclip) end
+            if data.FlySpeed ~= nil and UI.FlySpeed then UI.FlySpeed:Set(data.FlySpeed) end
+            if data.FlyKey ~= nil and UI.FlyKey then UI.FlyKey:Set(data.FlyKey) end
+            if data.Fullbright ~= nil and UI.Fullbright then UI.Fullbright:Set(data.Fullbright) end
+            if data.Brightness ~= nil and UI.Brightness then UI.Brightness:Set(data.Brightness) end
+            if data.NoFog ~= nil and UI.NoFog then UI.NoFog:Set(data.NoFog) end
+            if data.NoBlur ~= nil and UI.NoBlur then UI.NoBlur:Set(data.NoBlur) end
+            if data.MonsterESP ~= nil and UI.MonsterESP then UI.MonsterESP:Set(data.MonsterESP) end
+            if data.PlayerESP ~= nil and UI.PlayerESP then UI.PlayerESP:Set(data.PlayerESP) end
+            if data.DivingBellESP ~= nil and UI.DivingBellESP then UI.DivingBellESP:Set(data.DivingBellESP) end
+            if data.VeinsESP ~= nil and UI.VeinsESP then UI.VeinsESP:Set(data.VeinsESP) end
+            if data.ClickTP ~= nil and UI.ClickTP then UI.ClickTP:Set(data.ClickTP) end
+            if data.AutoDeposit ~= nil and UI.AutoDeposit then UI.AutoDeposit:Set(data.AutoDeposit) end
+            if data.DepositThreshold ~= nil and UI.DepositThreshold then UI.DepositThreshold:Set(data.DepositThreshold) end
+            if data.FastMining ~= nil and UI.FastMining then UI.FastMining:Set(data.FastMining) end
+            if data.InstantInteract ~= nil and UI.InstantInteract then UI.InstantInteract:Set(data.InstantInteract) end
+            if data.HoldSwing ~= nil and UI.HoldSwing then UI.HoldSwing:Set(data.HoldSwing) end
+            if data.HoldSwingInterval ~= nil and UI.HoldSwingInterval then UI.HoldSwingInterval:Set(data.HoldSwingInterval) end
+            if data.GuiKey ~= nil and UI.GuiKey then UI.GuiKey:Set(data.GuiKey) end
+            if data.Theme ~= nil and WindUI.SetTheme then
+                currentTheme = data.Theme
+                WindUI:SetTheme(data.Theme)
+                if UI.ThemeSelect and UI.ThemeSelect.Select then
+                    UI.ThemeSelect:Select(data.Theme)
+                end
+            end
+        end)
+
+        WindUI:Notify({Title="Config", Content="Loaded profile: " .. activeConfigName, Duration=3, Icon="check"})
+    end
+})
+
+ConfigTab:Button({
+    Title="Delete Config",
+    Desc="Delete the selected config profile",
+    Callback=function()
+        local path = configFolder .. "/" .. activeConfigName .. ".json"
+        if isfile(path) and delfile then
+            pcall(delfile, path)
+            refreshConfigs()
+            WindUI:Notify({Title="Config", Content="Deleted profile: " .. activeConfigName, Duration=3})
+        else
+            WindUI:Notify({Title="Config", Content="Could not delete file.", Duration=3})
+        end
+    end
+})
+
+ConfigTab:Section({Title="Keybinds", TextXAlignment="Left"})
+UI.GuiKey = ConfigTab:Keybind({
+    Title="GUI Toggle Key",
+    Desc="Key to open/close this hub",
+    Value="LeftAlt",
+    Callback=function(k) guiKey = tostring(k) end
+})
+
+ConfigTab:Section({Title="Appearance & Theme", TextXAlignment="Left"})
+UI.ThemeSelect = ConfigTab:Dropdown({
+    Title="UI Theme",
+    Values=allThemes,
+    Value=currentTheme,
+    Callback=function(theme)
+        currentTheme = theme
+        if WindUI.SetTheme then WindUI:SetTheme(theme) end
+    end
+})
+
+local acrylicOn = true
+ConfigTab:Toggle({
+    Title="Acrylic Blur",
+    Desc="Glass background blur effect",
+    Value=true,
+    Callback=function(s)
+        acrylicOn = s
+        if WindUI.ToggleAcrylic then WindUI:ToggleAcrylic(s) end
+    end
+})
+
+ConfigTab:Section({Title="Script Management", TextXAlignment="Left"})
+ConfigTab:Button({
+    Title="Unload Hub",
+    Desc="Safely disconnect everything, restore lighting/mouse, and destroy UI",
+    Callback=function()
+        State:Destroy()
+        resetLighting()
+        UIS.MouseBehavior = Enum.MouseBehavior.LockCenter
+        WindUI:Notify({Title="Hub", Content="Hub unloaded successfully.", Duration=3})
+    end
+})
+
+-- ============================================================================
+-- Toggle Handler
+-- ============================================================================
+
+local isToggling = false
+local function handleToggle()
+    if isToggling or not Window then return end
+    isToggling = true
+
+    if isGuiOpen then
+        if Window.Close then Window:Close() end
+        isGuiOpen = false
+        UIS.MouseBehavior = Enum.MouseBehavior.LockCenter
+    else
+        if Window.Open then Window:Open() end
+        isGuiOpen = true
+        UIS.MouseBehavior = Enum.MouseBehavior.Default
+        UIS.MouseIconEnabled = true
+    end
+
+    task.wait(0.20)
+    isToggling = false
+end
+
+State:AddConnection(UIS.InputBegan:Connect(function(input, gpe)
+    if UIS:GetFocusedTextBox() then return end
+    local name = input.KeyCode.Name
+    if name == guiKey or (#guiKey == 1 and name:lower() == guiKey:lower()) then
+        handleToggle()
+    end
+end))
+
+WindUI:Notify({
+    Title = "Hzyl Hub Ready",
+    Content = "Press " .. guiKey .. " to toggle the hub.",
+    Duration = 5,
+    Icon = "check"
+})
