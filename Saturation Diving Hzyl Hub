@@ -17,7 +17,14 @@ pcall(function()
             gui:Destroy()
         end
     end
+    local oldFolder = CoreGui:FindFirstChild("HzylHub_ESPFolder")
+    if oldFolder then oldFolder:Destroy() end
 end)
+
+-- esp container in CoreGui (never culled by game)
+local ESPFolder = Instance.new("Folder")
+ESPFolder.Name = "HzylHub_ESPFolder"
+ESPFolder.Parent = CoreGui
 
 -- state manager
 local State = {
@@ -26,7 +33,8 @@ local State = {
     PlayerESP = {},
     MonsterESP = {},
     WorldESP = {},
-    Window = nil
+    Window = nil,
+    ESPFolder = ESPFolder
 }
 
 function State:AddConnection(conn)
@@ -76,6 +84,11 @@ function State:Destroy()
         if item.Billboard then pcall(item.Billboard.Destroy, item.Billboard) end
     end
     table.clear(self.WorldESP)
+
+    if self.ESPFolder and self.ESPFolder.Parent then
+        pcall(self.ESPFolder.Destroy, self.ESPFolder)
+        self.ESPFolder = nil
+    end
 
     -- remove ui
     if self.Window and self.Window.Destroy then
@@ -621,11 +634,36 @@ local monsterEspOn = false
 local bellEspOn = false
 local veinEspOn = false
 
+-- chams & outline styling
+local chamsFillTransparency = 0.90
+local chamsOutlineTransparency = 0.0
+
 -- colors
-local CRIMSON_OUTLINE = Color3.fromRGB(220, 20, 60)
+local CRIMSON_OUTLINE = Color3.fromRGB(237, 28, 64)
 local PLAYER_COLOR = Color3.fromRGB(56, 189, 248)
-local BELL_COLOR = Color3.fromRGB(56, 189, 248)
+local BELL_COLOR = Color3.fromRGB(0, 220, 255)
 local VEIN_COLOR = Color3.fromRGB(250, 204, 21)
+
+local function updateAllHighlights()
+    for _, item in pairs(State.PlayerESP) do
+        if item.Highlight then
+            item.Highlight.FillTransparency = chamsFillTransparency
+            item.Highlight.OutlineTransparency = chamsOutlineTransparency
+        end
+    end
+    for _, item in pairs(State.MonsterESP) do
+        if item.Highlight then
+            item.Highlight.FillTransparency = chamsFillTransparency
+            item.Highlight.OutlineTransparency = chamsOutlineTransparency
+        end
+    end
+    for _, item in pairs(State.WorldESP) do
+        if item.Highlight then
+            item.Highlight.FillTransparency = chamsFillTransparency
+            item.Highlight.OutlineTransparency = chamsOutlineTransparency
+        end
+    end
+end
 
 local function isDumbProp(obj)
     if not obj or not obj.Name then return false end
@@ -640,15 +678,25 @@ local function getMonsterName(obj)
     return obj.Name
 end
 
+local function getTargetRoot(target)
+    if not target then return nil end
+    if target:IsA("Model") then
+        return target.PrimaryPart or target:FindFirstChild("HumanoidRootPart") or target:FindFirstChild("Head") or target:FindFirstChildWhichIsA("BasePart")
+    elseif target:IsA("BasePart") then
+        return target
+    end
+    return nil
+end
+
 local function addHighlight(target, fillColor, outlineColor, name)
     local old = target:FindFirstChild(name)
     if old then old:Destroy() end
 
     local h = Instance.new("Highlight")
     h.Name = name
-    h.FillTransparency = 0.85
+    h.FillTransparency = chamsFillTransparency
     h.FillColor = fillColor
-    h.OutlineTransparency = 0
+    h.OutlineTransparency = chamsOutlineTransparency
     h.OutlineColor = outlineColor or Color3.fromRGB(255, 255, 255)
     h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
     h.Adornee = target
@@ -657,28 +705,29 @@ local function addHighlight(target, fillColor, outlineColor, name)
 end
 
 local function addBillboard(target, name, text, hexColor, offset)
-    local root = (target:IsA("Model") and (target.PrimaryPart or target:FindFirstChild("HumanoidRootPart") or target:FindFirstChildWhichIsA("BasePart"))) or (target:IsA("BasePart") and target)
+    local root = getTargetRoot(target)
     if not root then return nil, nil end
 
-    local old = root:FindFirstChild(name)
-    if old then old:Destroy() end
+    local parentFolder = State.ESPFolder or CoreGui
 
     local bb = Instance.new("BillboardGui")
     bb.Name = name
-    bb.Size = UDim2.new(0, 180, 0, 22)
-    bb.StudsOffset = offset or Vector3.new(0, 3, 0)
+    bb.Size = UDim2.new(0, 240, 0, 26)
+    bb.StudsOffset = offset or Vector3.new(0, 3.5, 0)
     bb.AlwaysOnTop = true
-    bb.MaxDistance = 8000
+    bb.LightInfluence = 0
+    bb.MaxDistance = 99999
     bb.Adornee = root
-    bb.Parent = root
+    bb.Parent = parentFolder
 
     local lbl = Instance.new("TextLabel")
     lbl.Size = UDim2.new(1, 0, 1, 0)
     lbl.BackgroundTransparency = 1
     lbl.TextColor3 = Color3.fromRGB(255, 255, 255)
-    lbl.TextStrokeTransparency = 0.2
-    lbl.Font = Enum.Font.FredokaOne
-    lbl.TextSize = 12
+    lbl.TextStrokeTransparency = 0
+    lbl.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    lbl.Font = Enum.Font.GothamBold
+    lbl.TextSize = 13
     lbl.RichText = true
     lbl.Text = string.format("<font color='#%s'><b>%s</b></font>", hexColor, text)
     lbl.Parent = bb
@@ -688,8 +737,11 @@ end
 -- player esp
 local function attachPlayerEsp(char, player)
     if not playerEspOn or not char or char == localChar then return end
+    local existing = State.PlayerESP[char]
+    if existing and existing.Billboard and existing.Billboard.Parent and existing.Highlight and existing.Highlight.Parent then return end
+
     local col = (player.Team and player.TeamColor.Color) or PLAYER_COLOR
-    local h = addHighlight(char, col, Color3.fromRGB(255, 255, 255), "Player_ESPHighlight")
+    local h = addHighlight(char, col, col, "Player_ESPHighlight")
     local b, lbl = addBillboard(char, "Player_ESPBillboard", player.DisplayName or player.Name, "38bdf8", Vector3.new(0, 3.2, 0))
     State.PlayerESP[char] = { Highlight = h, Billboard = b, Label = lbl, Player = player, Target = char, LastDist = -1, LastHP = -1 }
 end
@@ -707,11 +759,14 @@ end
 local function attachMonsterEsp(character)
     if not monsterEspOn or not character or character == localChar then return end
     if Players:GetPlayerFromCharacter(character) then return end
-    if isDumbProp(character) or State.MonsterESP[character] then return end
+    if isDumbProp(character) then return end
+
+    local existing = State.MonsterESP[character]
+    if existing and existing.Billboard and existing.Billboard.Parent and existing.Highlight and existing.Highlight.Parent then return end
 
     local name = getMonsterName(character)
     local h = addHighlight(character, CRIMSON_OUTLINE, CRIMSON_OUTLINE, "NPC_ESPHighlight")
-    local b, lbl = addBillboard(character, "Monster_ESPBillboard", name, "dc143c", Vector3.new(0, 3.5, 0))
+    local b, lbl = addBillboard(character, "Monster_ESPBillboard", name, "ed1c40", Vector3.new(0, 3.5, 0))
     State.MonsterESP[character] = { Highlight = h, Billboard = b, Label = lbl, BaseName = name, Target = character, LastDist = -1, LastHP = -1 }
 end
 
@@ -728,8 +783,15 @@ end
 local function scanAllNPCs()
     if not monsterEspOn then return end
 
+    local curMonsters = WS:FindFirstChild("CurrentMonsters")
+    if curMonsters then
+        for _, m in ipairs(curMonsters:GetChildren()) do
+            attachMonsterEsp(m)
+        end
+    end
+
     for _, item in ipairs(WS:GetDescendants()) do
-        if item:IsA("Humanoid") and item.Parent then
+        if item:IsA("Humanoid") and item.Parent and not Players:GetPlayerFromCharacter(item.Parent) then
             attachMonsterEsp(item.Parent)
         end
     end
@@ -766,8 +828,11 @@ end))
 
 -- world esp
 local function attachWorldEsp(target, label, color)
-    if not target or not target.Parent or State.WorldESP[target] then return end
-    local h = addHighlight(target, color, Color3.fromRGB(255, 255, 255), "World_ESPHighlight")
+    if not target or not target.Parent then return end
+    local existing = State.WorldESP[target]
+    if existing and existing.Billboard and existing.Billboard.Parent and existing.Highlight and existing.Highlight.Parent then return end
+
+    local h = addHighlight(target, color, color, "World_ESPHighlight")
     local b, lbl = addBillboard(target, "World_ESPBillboard", label, color:ToHex(), Vector3.new(0, 3.5, 0))
     State.WorldESP[target] = { Highlight = h, Billboard = b, Label = lbl, BaseText = label, ColorHex = color:ToHex(), Target = target, LastDist = -1 }
 end
@@ -805,13 +870,21 @@ State:AddThread(task.spawn(function()
         if myPos then
             -- update players
             if playerEspOn then
+                for _, p in ipairs(Players:GetPlayers()) do
+                    if p ~= LocalPlayer and p.Character then
+                        attachPlayerEsp(p.Character, p)
+                    end
+                end
                 for char, data in pairs(State.PlayerESP) do
                     if not char or not char.Parent or not Players:GetPlayerFromCharacter(char) then
                         removePlayerEsp(char)
-                    elseif data.Label then
-                        local root = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChildWhichIsA("BasePart")
+                    else
+                        local root = getTargetRoot(char)
                         local hum = char:FindFirstChildOfClass("Humanoid")
-                        if root then
+                        if root and data.Label then
+                            if data.Billboard and data.Billboard.Adornee ~= root then
+                                data.Billboard.Adornee = root
+                            end
                             local dist = math.floor((root.Position - myPos).Magnitude)
                             local hp = (hum and hum.Health > 0) and math.floor(hum.Health) or 0
                             if dist ~= data.LastDist or hp ~= data.LastHP then
@@ -827,41 +900,50 @@ State:AddThread(task.spawn(function()
 
             -- update monsters
             if monsterEspOn then
+                local curMonsters = WS:FindFirstChild("CurrentMonsters")
+                if curMonsters then
+                    for _, m in ipairs(curMonsters:GetChildren()) do
+                        attachMonsterEsp(m)
+                    end
+                end
+
                 for char, data in pairs(State.MonsterESP) do
                     if not char or not char.Parent then
                         removeMonsterEsp(char)
-                    elseif data.Label then
-                        local root = (char:IsA("Model") and (char.PrimaryPart or char:FindFirstChild("HumanoidRootPart") or char:FindFirstChildWhichIsA("BasePart"))) or (char:IsA("BasePart") and char)
+                    else
+                        local root = getTargetRoot(char)
                         local hum = char:FindFirstChildOfClass("Humanoid")
-                        if root then
+                        if root and data.Label then
+                            if data.Billboard and data.Billboard.Adornee ~= root then
+                                data.Billboard.Adornee = root
+                            end
                             local dist = math.floor((root.Position - myPos).Magnitude)
                             local hp = (hum and hum.Health > 0) and math.floor(hum.Health) or 0
                             if dist ~= data.LastDist or hp ~= data.LastHP then
                                 data.LastDist = dist
                                 data.LastHP = hp
                                 local hpText = hp > 0 and string.format(" <font color='#93c5fd'>[%d HP]</font>", hp) or ""
-                                data.Label.Text = string.format("<font color='#dc143c'><b>%s</b></font>%s <font color='#fde047'>[%dm]</font>", data.BaseName, hpText, dist)
+                                data.Label.Text = string.format("<font color='#ed1c40'><b>%s</b></font>%s <font color='#fde047'>[%dm]</font>", data.BaseName, hpText, dist)
                             end
                         end
                     end
                 end
             end
 
-            -- update bell and veins
+            -- update bell
             if bellEspOn then
                 local bell = WS:FindFirstChild("DivingBell")
-                if bell and not State.WorldESP[bell] then
+                if bell then
                     attachWorldEsp(bell, "Diving Bell", BELL_COLOR)
                 end
             end
 
+            -- update veins
             if veinEspOn then
                 local veins = WS:FindFirstChild("LocalSanguiniteObjectiveAnchors")
                 if veins then
                     for _, vein in ipairs(veins:GetChildren()) do
-                        if not State.WorldESP[vein] then
-                            attachWorldEsp(vein, "Vein", VEIN_COLOR)
-                        end
+                        attachWorldEsp(vein, "Vein", VEIN_COLOR)
                     end
                 end
             end
@@ -869,10 +951,13 @@ State:AddThread(task.spawn(function()
             for target, data in pairs(State.WorldESP) do
                 if not target or not target.Parent then
                     removeWorldEsp(target)
-                elseif data.Label then
-                    local part = (target:IsA("Model") and (target.PrimaryPart or target:FindFirstChildWhichIsA("BasePart"))) or (target:IsA("BasePart") and target)
-                    if part then
-                        local dist = math.floor((part.Position - myPos).Magnitude)
+                else
+                    local root = getTargetRoot(target)
+                    if root and data.Label then
+                        if data.Billboard and data.Billboard.Adornee ~= root then
+                            data.Billboard.Adornee = root
+                        end
+                        local dist = math.floor((root.Position - myPos).Magnitude)
                         if dist ~= data.LastDist then
                             data.LastDist = dist
                             data.Label.Text = string.format("<font color='#%s'><b>%s</b></font> <font color='#fde047'>[%dm]</font>", data.ColorHex, data.BaseText, dist)
@@ -1093,6 +1178,28 @@ UI.VeinsESP = ESPTab:Toggle({
             local of = WS:FindFirstChild("LocalSanguiniteObjectiveAnchors")
             if of then for _, o in ipairs(of:GetChildren()) do removeWorldEsp(o) end end
         end
+    end
+})
+
+ESPTab:Section({Title="Chams & Outline Style", TextXAlignment="Left"})
+UI.ChamsFillTransparency = ESPTab:Slider({
+    Title="Chams Transparency",
+    Desc="Body fill transparency (0.90 = light & clean, 1.0 = outline only)",
+    Value={Min=0.50, Max=1.00, Default=0.90},
+    Step=0.02,
+    Callback=function(v)
+        chamsFillTransparency = v
+        updateAllHighlights()
+    end
+})
+UI.ChamsOutlineTransparency = ESPTab:Slider({
+    Title="Outline Transparency",
+    Desc="Outline visibility (0.0 = solid, sharp outline)",
+    Value={Min=0.00, Max=1.00, Default=0.00},
+    Step=0.05,
+    Callback=function(v)
+        chamsOutlineTransparency = v
+        updateAllHighlights()
     end
 })
 
@@ -1376,6 +1483,8 @@ ConfigTab:Button({
             PlayerESP = playerEspOn,
             DivingBellESP = bellEspOn,
             VeinsESP = veinEspOn,
+            ChamsFillTransparency = chamsFillTransparency,
+            ChamsOutlineTransparency = chamsOutlineTransparency,
             ClickTP = clickTpOn,
             AutoDeposit = autoDepositOn,
             DepositThreshold = depositAtPercent,
@@ -1425,6 +1534,8 @@ ConfigTab:Button({
             if data.PlayerESP ~= nil and UI.PlayerESP then UI.PlayerESP:Set(data.PlayerESP) end
             if data.DivingBellESP ~= nil and UI.DivingBellESP then UI.DivingBellESP:Set(data.DivingBellESP) end
             if data.VeinsESP ~= nil and UI.VeinsESP then UI.VeinsESP:Set(data.VeinsESP) end
+            if data.ChamsFillTransparency ~= nil and UI.ChamsFillTransparency then UI.ChamsFillTransparency:Set(data.ChamsFillTransparency) end
+            if data.ChamsOutlineTransparency ~= nil and UI.ChamsOutlineTransparency then UI.ChamsOutlineTransparency:Set(data.ChamsOutlineTransparency) end
             if data.ClickTP ~= nil and UI.ClickTP then UI.ClickTP:Set(data.ClickTP) end
             if data.AutoDeposit ~= nil and UI.AutoDeposit then UI.AutoDeposit:Set(data.AutoDeposit) end
             if data.DepositThreshold ~= nil and UI.DepositThreshold then UI.DepositThreshold:Set(data.DepositThreshold) end
