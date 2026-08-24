@@ -1,4 +1,4 @@
--- Demonology (Hzyl Hub • Full Minimize • Inf Stamina • Accurate Laser • False-Positive Free • Zero Lag • Noclip • Mobile Toggle • Left HUD • Big Text)
+-- Demonology (Doppelganger & Fake Orb Detection • Hzyl Hub • Full Minimize • Inf Stamina • Accurate Laser • False-Positive Free • Zero Lag • Noclip • Left HUD)
 if not game:IsLoaded() then
 	game.Loaded:Wait()
 end
@@ -112,7 +112,7 @@ MobileToggle.MouseButton1Click:Connect(function()
 	MainFrame.Visible = not MainFrame.Visible
 end)
 
--- Grey Top Bar (With Title Logo & Hzyl Hub Small Font Subtitle)
+-- Grey Top Bar (With Title Logo & Hzyl Hub Subtitle)
 local TitleBar = Instance.new("Frame", MainFrame)
 TitleBar.Size = UDim2.new(1, 0, 0, 36)
 TitleBar.BackgroundColor3 = Color3.fromRGB(36, 42, 54)
@@ -463,6 +463,8 @@ local NoclipConn = nil
 local InfStaminaToggle = false
 local InfStaminaConn = nil
 local IsUiClosed = false
+local LastAutoSelectedGhost = nil
+local IsDoppelgangerDetected = false
 
 local OldLightingList = {
 	Ambient = Lighting.Ambient,
@@ -772,8 +774,17 @@ local function PerformEvidenceAudit()
 	return lowestTemp, witherFound, writingFound, printsFound, orbFound, highestEMF, laserFound, spiritFound
 end
 
-local function GetPossibleGhostTypes(detectedList)
+-- Smart Ghost Type Resolver with Doppelganger / Fake Orb handling
+local function ResolveGhostMatches(detectedList, isOrbPresent, isWriting, isBox, isFreezing)
 	local matches = {}
+	
+	-- 1. Check if Doppelganger signature is met (GhostWriting + SpiritBox + FreezingTemperatures)
+	local isDoppel = isWriting and isBox and isFreezing
+	if isDoppel then
+		table.insert(matches, "Doppelganger")
+		return matches, true
+	end
+
 	for ghostName, evidences in pairs(GhostEvidenceMap) do
 		local allMatch = true
 		for _, det in ipairs(detectedList) do
@@ -786,7 +797,16 @@ local function GetPossibleGhostTypes(detectedList)
 			table.insert(matches, ghostName)
 		end
 	end
-	return matches
+
+	-- If Orb is detected with 2 Doppelganger evidences, suggest Doppelganger as a possible mimic candidate
+	if isOrbPresent then
+		local dopEvCount = (isWriting and 1 or 0) + (isBox and 1 or 0) + (isFreezing and 1 or 0)
+		if dopEvCount >= 2 and not table.find(matches, "Doppelganger") then
+			table.insert(matches, "Doppelganger (Fake Orb?)")
+		end
+	end
+
+	return matches, false
 end
 
 local function SelectEvidenceInJournal(evidenceName)
@@ -833,6 +853,30 @@ local function SelectEvidenceInJournal(evidenceName)
 	end)
 end
 
+-- Deselect a specific evidence from the journal
+local function DeselectEvidenceInJournal(evidenceName)
+	pcall(function()
+		local journal = plr.PlayerGui:FindFirstChild("Journal")
+		if journal and journal:FindFirstChild("Holder") and journal.Holder.Pages then
+			for _, pageName in ipairs({"Page1", "Page4"}) do
+				local p = journal.Holder.Pages:FindFirstChild(pageName)
+				if p and p:FindFirstChild("Left") and p.Left:FindFirstChild("Page") then
+					local et = p.Left.Page:FindFirstChild("EvidenceTypes")
+					if et then
+						local evFrame = et:FindFirstChild(evidenceName)
+						if evFrame then
+							local target = evFrame:FindFirstChild("Container") or evFrame
+							if target:FindFirstChild("Highlight") then target.Highlight.Visible = false end
+							if target:FindFirstChild("CrossOut") then target.CrossOut.Visible = false end
+						end
+					end
+				end
+			end
+		end
+	end)
+end
+
+-- Select Ghost with latch so it doesn't fight manual journal clicks
 local function SelectGhostInJournal(ghostName)
 	if not ghostName or ghostName == "..." or ghostName:find("/") or ghostName:find("%+") then
 		return false
@@ -877,6 +921,32 @@ local function SelectGhostInJournal(ghostName)
 	end)
 
 	return true
+end
+
+-- Deselect Ghost Completely from Journal
+local function DeselectGhostFromJournal()
+	LastAutoSelectedGhost = nil
+	pcall(function()
+		local journal = plr.PlayerGui:FindFirstChild("Journal")
+		local page4 = journal and journal:FindFirstChild("Holder") and journal.Holder.Pages:FindFirstChild("Page4")
+		if page4 then
+			local ghostTypes = page4.Right.Page.GhostTypes
+			for _, g in ipairs(ghostTypes:GetChildren()) do
+				if g:IsA("Frame") then
+					if g:FindFirstChild("Highlight") then g.Highlight.Visible = false end
+					if g:FindFirstChild("Strikethrough") then g.Strikethrough.Visible = false end
+					local det = g:FindFirstChild("Detection")
+					if det then
+						local conn = getconnections and getconnections(det.MouseButton1Click)[1]
+						if conn and getupvalues then
+							local u2 = getupvalues(conn.Function)[1]
+							if u2 then u2[g.Name] = nil end
+						end
+					end
+				end
+			end
+		end
+	end)
 end
 
 --------------------------------------------------------------
@@ -924,15 +994,15 @@ local function RefreshEvidenceESP()
 		local bil = Instance.new("BillboardGui", orb)
 		bil.Name = "EvidenceBil"
 		bil.AlwaysOnTop = true
-		bil.Size = UDim2.new(0, 80, 0, 24)
+		bil.Size = UDim2.new(0, 95, 0, 26)
 		bil.Adornee = orb
 
 		local lbl = Instance.new("TextLabel", bil)
 		lbl.BackgroundTransparency = 1
 		lbl.Size = UDim2.new(1, 0, 1, 0)
 		lbl.Font = Enum.Font.GothamBold
-		lbl.Text = "✨ Ghost Orb"
-		lbl.TextColor3 = Color3.fromRGB(240, 245, 255)
+		lbl.Text = IsDoppelgangerDetected and "✨ Orb (FAKE)" or "✨ Ghost Orb"
+		lbl.TextColor3 = IsDoppelgangerDetected and Color3.fromRGB(245, 195, 75) or Color3.fromRGB(240, 245, 255)
 		lbl.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
 		lbl.TextStrokeTransparency = 0
 		lbl.TextScaled = true
@@ -940,7 +1010,7 @@ local function RefreshEvidenceESP()
 		local h = Instance.new("Highlight", orb)
 		h.Name = "EvidenceHL"
 		h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-		h.OutlineColor = Color3.fromRGB(240, 245, 255)
+		h.OutlineColor = IsDoppelgangerDetected and Color3.fromRGB(245, 195, 75) or Color3.fromRGB(240, 245, 255)
 		h.FillTransparency = 1
 		h.Adornee = orb
 
@@ -1055,10 +1125,24 @@ local MainLoopConn = RS.Heartbeat:Connect(function()
 	HUD_Handprints.Text = printsStr
 	HUD_Handprints.TextColor3 = printsColor
 
-	-- 5. Ghost Orb
+	-- 5. Ghost Orb & Doppelganger Fake Orb Evaluation
 	if not CachedOrb and orb then CachedOrb = true end
-	local orbStr = "Ghost Orb: " .. (CachedOrb and "Yes" or "No")
-	local orbColor = CachedOrb and Color3.fromRGB(85, 215, 130) or Color3.fromRGB(205, 95, 95)
+	
+	-- Check if Doppelganger conditions are met
+	local directGhostType = ghost and (ghost:GetAttribute("GhostType") or ghost:GetAttribute("Type"))
+	IsDoppelgangerDetected = (CachedWriting and CachedSpiritBox and isFreezing) or (directGhostType == "Doppelganger")
+	
+	local orbStr = "Ghost Orb: No"
+	local orbColor = Color3.fromRGB(205, 95, 95)
+	if CachedOrb then
+		if IsDoppelgangerDetected then
+			orbStr = "Ghost Orb: Fake (Doppel)"
+			orbColor = Color3.fromRGB(245, 195, 75)
+		else
+			orbStr = "Ghost Orb: Yes"
+			orbColor = Color3.fromRGB(85, 215, 130)
+		end
+	end
 	GhostOrb.Text = orbStr
 	GhostOrb.TextColor3 = orbColor
 	HUD_GhostOrb.Text = orbStr
@@ -1092,22 +1176,10 @@ local MainLoopConn = RS.Heartbeat:Connect(function()
 	HUD_SpiritBox.Text = spiritStr
 	HUD_SpiritBox.TextColor3 = spiritColor
 
-	-- Auto Evidence Execution
-	if AutoEvidenceToggle then
-		if CachedPrints then SelectEvidenceInJournal("Handprints") end
-		if CachedOrb then SelectEvidenceInJournal("GhostOrb") end
-		if CachedLaser then SelectEvidenceInJournal("LaserProjector") end
-		if isEMF5 then SelectEvidenceInJournal("EMFLevel5") end
-		if isFreezing then SelectEvidenceInJournal("FreezingTemperatures") end
-		if CachedWither then SelectEvidenceInJournal("Wither") end
-		if CachedSpiritBox then SelectEvidenceInJournal("SpiritBox") end
-		if CachedWriting then SelectEvidenceInJournal("GhostWriting") end
-	end
-
 	-- Ghost Type Resolution
 	local detectedList = {}
 	if CachedPrints then table.insert(detectedList, "Handprints") end
-	if CachedOrb then table.insert(detectedList, "GhostOrb") end
+	if CachedOrb and not IsDoppelgangerDetected then table.insert(detectedList, "GhostOrb") end
 	if CachedLaser then table.insert(detectedList, "LaserProjector") end
 	if isEMF5 then table.insert(detectedList, "EMFLevel5") end
 	if isFreezing then table.insert(detectedList, "FreezingTemperatures") end
@@ -1115,10 +1187,12 @@ local MainLoopConn = RS.Heartbeat:Connect(function()
 	if CachedSpiritBox then table.insert(detectedList, "SpiritBox") end
 	if CachedWriting then table.insert(detectedList, "GhostWriting") end
 
-	local candidates = GetPossibleGhostTypes(detectedList)
-	local detectedGhostType = ghost and (ghost:GetAttribute("GhostType") or ghost:GetAttribute("Type"))
+	local candidates, isDoppel = ResolveGhostMatches(detectedList, CachedOrb, CachedWriting, CachedSpiritBox, isFreezing)
+	local detectedGhostType = directGhostType
 	if not detectedGhostType then
-		if #candidates == 1 then
+		if isDoppel then
+			detectedGhostType = "Doppelganger (Fake Orb!)"
+		elseif #candidates == 1 then
 			detectedGhostType = candidates[1]
 		elseif #candidates > 1 and #detectedList > 0 then
 			if #candidates <= 2 then
@@ -1129,11 +1203,34 @@ local MainLoopConn = RS.Heartbeat:Connect(function()
 		else
 			detectedGhostType = "..."
 		end
+	elseif directGhostType == "Doppelganger" and CachedOrb then
+		detectedGhostType = "Doppelganger (Fake Orb!)"
 	end
 
-	-- Auto Select Ghost Execution
+	-- Auto Evidence Execution (Never mark fake Ghost Orb for Doppelganger)
+	if AutoEvidenceToggle then
+		if CachedPrints then SelectEvidenceInJournal("Handprints") end
+		if CachedLaser then SelectEvidenceInJournal("LaserProjector") end
+		if isEMF5 then SelectEvidenceInJournal("EMFLevel5") end
+		if isFreezing then SelectEvidenceInJournal("FreezingTemperatures") end
+		if CachedWither then SelectEvidenceInJournal("Wither") end
+		if CachedSpiritBox then SelectEvidenceInJournal("SpiritBox") end
+		if CachedWriting then SelectEvidenceInJournal("GhostWriting") end
+		
+		if IsDoppelgangerDetected then
+			DeselectEvidenceInJournal("GhostOrb")
+		elseif CachedOrb then
+			SelectEvidenceInJournal("GhostOrb")
+		end
+	end
+
+	-- Auto Select Ghost Execution (Only fires once per identified ghost)
 	if AutoSelectGhostToggle and detectedGhostType and detectedGhostType ~= "..." and not detectedGhostType:find("/") and not detectedGhostType:find("%+") then
-		SelectGhostInJournal(detectedGhostType)
+		local cleanName = detectedGhostType:gsub("%s*%(.*%)", "")
+		if LastAutoSelectedGhost ~= cleanName then
+			LastAutoSelectedGhost = cleanName
+			SelectGhostInJournal(cleanName)
+		end
 	end
 
 	-- Header Info
@@ -1145,12 +1242,12 @@ local MainLoopConn = RS.Heartbeat:Connect(function()
 	local prefix = hunting and "Ghost(Hunting): " or "Ghost: "
 
 	Ghost.Text = prefix .. gender .. " | Type: " .. detectedGhostType .. " | Age: " .. tostring(age)
-	Ghost.TextColor3 = hunting and Color3.fromRGB(235, 75, 75) or Color3.fromRGB(245, 245, 250)
+	Ghost.TextColor3 = hunting and Color3.fromRGB(235, 75, 75) or (IsDoppelgangerDetected and Color3.fromRGB(245, 195, 75) or Color3.fromRGB(245, 245, 250))
 	CurrentRoom.Text = "Current room: " .. curRoom .. " | Favorite room: " .. favRoom
 
 	-- HUD Overlay Header
 	HUDGhost.Text = (hunting and "Ghost (Hunting): " or "Ghost: ") .. detectedGhostType
-	HUDGhost.TextColor3 = hunting and Color3.fromRGB(235, 75, 75) or Color3.fromRGB(240, 240, 245)
+	HUDGhost.TextColor3 = hunting and Color3.fromRGB(235, 75, 75) or (IsDoppelgangerDetected and Color3.fromRGB(245, 195, 75) or Color3.fromRGB(240, 240, 245))
 	HUDRoom.Text = "Room: " .. curRoom .. " | Fav: " .. favRoom
 
 	-- Hunt Escape Safety (1-Time Teleport per Hunt)
@@ -1460,6 +1557,9 @@ end)
 AutoSelectGhost.MouseButton1Click:Connect(function()
 	AutoSelectGhostToggle = not AutoSelectGhostToggle
 	ToggleButtonVisual(AutoSelectGhost, AutoSelectGhostToggle)
+	if not AutoSelectGhostToggle then
+		DeselectGhostFromJournal()
+	end
 end)
 
 Take3StarsPhoto.MouseButton1Click:Connect(function()
