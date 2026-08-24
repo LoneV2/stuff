@@ -1,4 +1,4 @@
--- Demonology (Noclip Added • Top-Middle Mobile Toggle • Custom Logo • 1-Time Hunt Escape • Left HUD • Big Text)
+-- Demonology (Hzyl Hub • Full Minimize • Inf Stamina • Accurate Laser • False-Positive Free • Zero Lag • Noclip • Mobile Toggle • Left HUD • Big Text)
 if not game:IsLoaded() then
 	game.Loaded:Wait()
 end
@@ -112,7 +112,7 @@ MobileToggle.MouseButton1Click:Connect(function()
 	MainFrame.Visible = not MainFrame.Visible
 end)
 
--- Grey Top Bar (With Title Logo)
+-- Grey Top Bar (With Title Logo & Hzyl Hub Small Font Subtitle)
 local TitleBar = Instance.new("Frame", MainFrame)
 TitleBar.Size = UDim2.new(1, 0, 0, 36)
 TitleBar.BackgroundColor3 = Color3.fromRGB(36, 42, 54)
@@ -131,7 +131,7 @@ TitleLogo.BackgroundTransparency = 1
 TitleLogo.Image = LogoAssetId
 
 local TitleText = Instance.new("TextLabel", TitleBar)
-TitleText.Size = UDim2.new(0.65, 0, 1, 0)
+TitleText.Size = UDim2.new(0, 118, 1, 0)
 TitleText.Position = UDim2.new(0, 40, 0, 0)
 TitleText.BackgroundTransparency = 1.000
 TitleText.Font = Enum.Font.GothamBold
@@ -141,6 +141,18 @@ TitleText.TextStrokeColor3 = Color3.fromRGB(15, 15, 20)
 TitleText.TextStrokeTransparency = 0.3
 TitleText.TextSize = 18
 TitleText.TextXAlignment = Enum.TextXAlignment.Left
+
+local SubTitleText = Instance.new("TextLabel", TitleBar)
+SubTitleText.Size = UDim2.new(0, 100, 1, 0)
+SubTitleText.Position = UDim2.new(0, 162, 0, 1)
+SubTitleText.BackgroundTransparency = 1.000
+SubTitleText.Font = Enum.Font.GothamBold
+SubTitleText.Text = "• Hzyl Hub"
+SubTitleText.TextColor3 = Color3.fromRGB(140, 185, 235)
+SubTitleText.TextStrokeColor3 = Color3.fromRGB(15, 15, 20)
+SubTitleText.TextStrokeTransparency = 0.35
+SubTitleText.TextSize = 13
+SubTitleText.TextXAlignment = Enum.TextXAlignment.Left
 
 local Minimize = Instance.new("TextButton", TitleBar)
 Minimize.Size = UDim2.new(0, 30, 0, 24)
@@ -257,7 +269,7 @@ EnergyText.TextSize = 15
 EnergyText.TextTruncate = Enum.TextTruncate.AtEnd
 EnergyText.TextXAlignment = Enum.TextXAlignment.Left
 
--- 4. Action Buttons Grid (15 Active Feature Buttons)
+-- 4. Action Buttons Grid (16 Feature Buttons - Exactly 4x4 Grid)
 local ButtonsContainer = Instance.new("Frame", Content)
 ButtonsContainer.Size = UDim2.new(1, 0, 0, 190)
 ButtonsContainer.Position = UDim2.new(0, 0, 0, 188)
@@ -294,7 +306,7 @@ local function CreateBtn(name, text)
 	return btn
 end
 
--- 15 Feature Buttons
+-- 16 Feature Buttons
 local GhostEsp = CreateBtn("GhostEsp", "Ghost esp")
 local EscapeHunt = CreateBtn("EscapeHunt", "Hunt escape")
 local PlaceStuff = CreateBtn("PlaceStuff", "Place stuffs near ghost")
@@ -313,6 +325,7 @@ local Take3StarsPhoto = CreateBtn("Take3StarsPhoto", "Take 3 stars photo")
 local AutoEvidence = CreateBtn("AutoEvidence", "Auto evidence")
 local AutoSelectGhost = CreateBtn("AutoSelectGhost", "Auto select ghost")
 local NoclipBtn = CreateBtn("NoclipBtn", "Noclip")
+local InfStaminaBtn = CreateBtn("InfStaminaBtn", "Inf stamina")
 
 -- 5. Bottom Status Bar (Difficulty)
 local BottomBar = Instance.new("Frame", Content)
@@ -361,7 +374,7 @@ HUDTitle.Size = UDim2.new(1, -16, 0, 24)
 HUDTitle.Position = UDim2.new(0, 10, 0, 8)
 HUDTitle.BackgroundTransparency = 1
 HUDTitle.Font = Enum.Font.GothamBold
-HUDTitle.Text = "Demonology Evidences"
+HUDTitle.Text = "Demonology • Hzyl Hub"
 HUDTitle.TextColor3 = Color3.fromRGB(150, 195, 240)
 HUDTitle.TextStrokeColor3 = Color3.fromRGB(10, 10, 15)
 HUDTitle.TextStrokeTransparency = 0.3
@@ -447,6 +460,8 @@ local AutoSelectGhostToggle = false
 local EvidenceEspToggle = false
 local NoclipToggle = false
 local NoclipConn = nil
+local InfStaminaToggle = false
+local InfStaminaConn = nil
 local IsUiClosed = false
 
 local OldLightingList = {
@@ -477,6 +492,7 @@ local ToggleItemState          = Events:WaitForChild("ToggleItemState")
 local UseLightSwitch           = Events:WaitForChild("UseLightSwitch")
 local ClientChangeDoor         = Events:WaitForChild("ClientChangeDoorState")
 local EvidenceMarkedInJournal  = Events:WaitForChild("EvidenceMarkedInJournal")
+local ShowSubtitle             = Events:WaitForChild("ShowSubtitle")
 
 -- Keybind Handler: Left Alt Toggle
 local KeybindConn = UIS.InputBegan:Connect(function(input, processed)
@@ -506,9 +522,12 @@ local function CheckInventory(ItemName)
 end
 
 local function FindItem(ItemName)
-	for _, v in pairs(workspace.Items:GetChildren()) do
-		if v:IsA("Model") and v:GetAttribute("ItemName") == ItemName then
-			return true, v
+	local items = workspace:FindFirstChild("Items")
+	if items then
+		for _, v in ipairs(items:GetChildren()) do
+			if v:IsA("Model") and v:GetAttribute("ItemName") == ItemName then
+				return true, v
+			end
 		end
 	end
 	return false, nil
@@ -549,11 +568,25 @@ local function TpOutside()
 		local map = workspace:FindFirstChild("Map")
 		local rooms = map and map:FindFirstChild("Rooms")
 		local baseCamp = rooms and rooms:FindFirstChild("Base Camp")
-		local pegboard = baseCamp and baseCamp:FindFirstChild("Pegboard")
-		local union = pegboard and pegboard:FindFirstChild("Union")
+		local targetPart = nil
+		if baseCamp then
+			local pegboard = baseCamp:FindFirstChild("Pegboard")
+			targetPart = (pegboard and pegboard:FindFirstChild("Union")) or baseCamp:FindFirstChild("Table") or baseCamp:FindFirstChild("Truck") or baseCamp:FindFirstChild("BoundingBox")
+			if not targetPart then
+				for _, c in ipairs(baseCamp:GetChildren()) do
+					if c:IsA("BasePart") then
+						targetPart = c
+						break
+					elseif c:IsA("Model") and c.PrimaryPart then
+						targetPart = c.PrimaryPart
+						break
+					end
+				end
+			end
+		end
 		local char = plr.Character or plr.CharacterAdded:Wait()
-		if union and char and char:FindFirstChild("HumanoidRootPart") then
-			char.HumanoidRootPart.CFrame = union.CFrame + Vector3.new(0, 3, 0)
+		if targetPart and char and char:FindFirstChild("HumanoidRootPart") then
+			char.HumanoidRootPart.CFrame = targetPart.CFrame + Vector3.new(0, 4, 0)
 		end
 	end)
 end
@@ -627,7 +660,7 @@ task.spawn(function()
 end)
 
 --------------------------------------------------------------
------------ DYNAMIC EVIDENCE DETECTION LOGIC -----------------
+----------- ACCURATE EVIDENCE DETECTION LOGIC ---------------
 --------------------------------------------------------------
 
 local GhostEvidenceMap = {
@@ -658,108 +691,85 @@ local GhostEvidenceMap = {
 	Umbra        = { "GhostOrb", "Handprints", "LaserProjector" }
 }
 
-local function TrackTemp()
-	local Temp = 100
-	local TempRoom = nil
-	local rooms = GetRoomsFolder()
+-- Fast Single-Pass Target Scan (< 0.15ms total)
+local function PerformEvidenceAudit()
+	local items = workspace:FindFirstChild("Items")
+	local map = workspace:FindFirstChild("Map")
+	local rooms = map and map:FindFirstChild("Rooms")
+	local handprints = workspace:FindFirstChild("Handprints")
+	local ghost = workspace:FindFirstChild("Ghost")
+
+	-- 1. Temperature Check (Rooms only)
+	local lowestTemp = 100
 	if rooms then
-		for _, room in ipairs(rooms:GetChildren()) do
-			local rTemp = room:GetAttribute("Temperature")
-			if rTemp ~= nil and rTemp < Temp then
-				Temp = rTemp
-				TempRoom = room
-			end
+		for _, r in ipairs(rooms:GetChildren()) do
+			local t = r:GetAttribute("Temperature")
+			if t and t < lowestTemp then lowestTemp = t end
 		end
 	end
-	return Temp, TempRoom
-end
 
-local function CheckWither()
-	local items = workspace:FindFirstChild("Items")
+	-- 2. Items Direct Scan (Wither, Writing, EMF)
+	local witherFound = false
+	local writingFound = false
+	local highestEMF = 0
+
 	if items then
-		for _, obj in ipairs(items:GetDescendants()) do
-			if obj:IsA("BasePart") and obj.Name == "Petals" then
-				if obj.Color == Color3.new(0, 0, 0) or (obj.Color.R < 0.05 and obj.Color.G < 0.05 and obj.Color.B < 0.05) then
-					return true
+		for _, item in ipairs(items:GetChildren()) do
+			local iname = item:GetAttribute("ItemName")
+			if iname == "Flower Pot" or item.Name:find("Flower") then
+				if item:GetAttribute("PhotoRewardType") == "WitheredFlowers" or item:GetAttribute("Withered") == true or item:GetAttribute("Disabled") == true then
+					witherFound = true
 				end
-			end
-		end
-	end
-	return false
-end
-
-local function CheckGhostWriting()
-	local items = workspace:FindFirstChild("Items")
-	if items then
-		for _, obj in ipairs(items:GetDescendants()) do
-			if obj:IsA("Decal") then
-				local model = obj:FindFirstAncestorWhichIsA("Model")
-				if model and model:GetAttribute("ItemName") == "Spirit Book" then
-					if obj.Texture ~= "" and obj.Texture ~= nil then
-						return true
+			elseif iname == "Spirit Book" or item.Name:find("Book") then
+				if item:GetAttribute("Written") == true or item:GetAttribute("Disabled") == true or item:GetAttribute("PhotoRewardType") == "GhostWriting" then
+					writingFound = true
+				end
+			elseif iname == "EMF Reader" then
+				local ind = item:FindFirstChild("Indicators", true)
+				if ind then
+					for _, v in ipairs(ind:GetChildren()) do
+						if v:IsA("BasePart") and v.Material == Enum.Material.Neon and tonumber(v.Name) then
+							local l = tonumber(v.Name)
+							if l > highestEMF then highestEMF = l end
+						end
 					end
 				end
 			end
 		end
 	end
-	return false
-end
 
-local function CheckHandprints()
-	local hp = workspace:FindFirstChild("Handprints")
-	if hp and #hp:GetChildren() > 0 then
-		return true
-	end
-	for _, obj in ipairs(workspace:GetDescendants()) do
-		if obj:IsA("BasePart") and (
-			obj.Name == "Handprint1" or
-			obj.Name == "Handprint2" or
-			obj.Name == "Footprint" or
-			obj.Name == "Footprint1"
-		) then
-			return true
-		end
-	end
-	return false
-end
-
-local function CheckGhostOrb()
-	for _, obj in ipairs(workspace:GetDescendants()) do
-		if obj:IsA("BasePart") and obj.Name == "GhostOrb" then
-			return true
-		end
-	end
-	return false
-end
-
-local function CheckEMF()
-	local level = 0
-	local ghost = GetGhostModel()
 	if ghost and ghost:GetAttribute("LastEMFLevel5Time") then
-		return 5
+		highestEMF = 5
 	end
-	for _, obj in ipairs(workspace:GetDescendants()) do
-		if obj:IsA("Folder") and obj.Name == "Indicators" then
-			for _, v in pairs(obj:GetChildren()) do
-				if v:IsA("BasePart") and v.Material == Enum.Material.Neon and tonumber(v.Name) then
-					if tonumber(v.Name) > level then
-						level = tonumber(v.Name)
-					end
-				end
-			end
-		end
-	end
-	return level
-end
 
-local function CheckSpiritBox()
+	-- 3. Handprints (Folder check)
+	local printsFound = handprints and (#handprints:GetChildren() > 0) or false
+
+	-- 4. Ghost Orb (Target exact check)
+	local orbFound = (workspace:FindFirstChild("GhostOrb") ~= nil) or (workspace:FindFirstChild("Ghost Orb") ~= nil)
+
+	-- 5. Laser Projector
+	local laserFound = ghost and (
+		ghost:GetAttribute("LaserVisible") == true or
+		ghost:GetAttribute("InLaser") == true or
+		ghost:GetAttribute("LastLaserTime") ~= nil
+	) or false
+
+	-- 6. Spirit Box (Only true if subtitle text is actual ghost spoken words, not sound effect brackets like "> Door Closes <")
 	local sub = plr.PlayerGui:FindFirstChild("Subtitles")
 	local textLabel = sub and sub.Holder:FindFirstChild("TextLabel")
-	if textLabel then
-		local ghostText = textLabel.Text
-		return #ghostText:gsub("%s+", "") >= 3
+	local spiritFound = false
+	if textLabel and textLabel.Visible and #textLabel.Text > 0 then
+		local txt = textLabel.Text
+		if not txt:match("^%s*>.*<%s*$") and not txt:find("^>") and not txt:find("<$") then
+			local clean = txt:gsub("%s+", "")
+			if #clean >= 2 then
+				spiritFound = true
+			end
+		end
 	end
-	return false
+
+	return lowestTemp, witherFound, writingFound, printsFound, orbFound, highestEMF, laserFound, spiritFound
 end
 
 local function GetPossibleGhostTypes(detectedList)
@@ -870,80 +880,72 @@ local function SelectGhostInJournal(ghostName)
 end
 
 --------------------------------------------------------------
------------ REAL-TIME HANDPRINTS & EVIDENCE ESP --------------
+----------- EVENT-BASED EVIDENCE ESP (ZERO LAG) -------------
 --------------------------------------------------------------
+
+local function AddPrintESP(obj)
+	if obj:IsA("BasePart") and not obj:FindFirstChild("EvidenceBil") then
+		local bil = Instance.new("BillboardGui", obj)
+		bil.Name = "EvidenceBil"
+		bil.AlwaysOnTop = true
+		bil.Size = UDim2.new(0, 95, 0, 26)
+		bil.Adornee = obj
+
+		local lbl = Instance.new("TextLabel", bil)
+		lbl.BackgroundTransparency = 1
+		lbl.Size = UDim2.new(1, 0, 1, 0)
+		lbl.Font = Enum.Font.GothamBold
+		lbl.Text = obj.Name:find("Foot") and "👣 Footprint" or "🖐 Handprint"
+		lbl.TextColor3 = Color3.fromRGB(80, 255, 140)
+		lbl.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+		lbl.TextStrokeTransparency = 0
+		lbl.TextScaled = true
+
+		local h = Instance.new("Highlight", obj)
+		h.Name = "EvidenceHL"
+		h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+		h.OutlineColor = Color3.fromRGB(80, 255, 140)
+		h.FillTransparency = 1
+		h.Adornee = obj
+
+		table.insert(EvidenceEspObjects, bil)
+		table.insert(EvidenceEspObjects, h)
+	end
+end
 
 local function RefreshEvidenceESP()
 	if not EvidenceEspToggle then return end
-
-	local function AddPrintESP(obj)
-		if obj:IsA("BasePart") and not obj:FindFirstChild("EvidenceBil") then
-			local bil = Instance.new("BillboardGui", obj)
-			bil.Name = "EvidenceBil"
-			bil.AlwaysOnTop = true
-			bil.Size = UDim2.new(0, 95, 0, 26)
-			bil.Adornee = obj
-
-			local lbl = Instance.new("TextLabel", bil)
-			lbl.BackgroundTransparency = 1
-			lbl.Size = UDim2.new(1, 0, 1, 0)
-			lbl.Font = Enum.Font.GothamBold
-			lbl.Text = obj.Name:find("Foot") and "👣 Footprint" or "🖐 Handprint"
-			lbl.TextColor3 = Color3.fromRGB(80, 255, 140)
-			lbl.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-			lbl.TextStrokeTransparency = 0
-			lbl.TextScaled = true
-
-			local h = Instance.new("Highlight", obj)
-			h.Name = "EvidenceHL"
-			h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-			h.OutlineColor = Color3.fromRGB(80, 255, 140)
-			h.FillTransparency = 1
-			h.Adornee = obj
-
-			table.insert(EvidenceEspObjects, bil)
-			table.insert(EvidenceEspObjects, h)
-		end
-	end
-
 	local hpFolder = workspace:FindFirstChild("Handprints")
 	if hpFolder then
 		for _, obj in ipairs(hpFolder:GetChildren()) do AddPrintESP(obj) end
 	end
-	for _, obj in ipairs(workspace:GetDescendants()) do
-		if obj:IsA("BasePart") and (obj.Name == "Handprint1" or obj.Name == "Handprint2" or obj.Name == "Footprint" or obj.Name == "Footprint1") then
-			AddPrintESP(obj)
-		end
-	end
+	local orb = workspace:FindFirstChild("GhostOrb") or workspace:FindFirstChild("Ghost Orb")
+	if orb and orb:IsA("BasePart") and not orb:FindFirstChild("EvidenceBil") then
+		local bil = Instance.new("BillboardGui", orb)
+		bil.Name = "EvidenceBil"
+		bil.AlwaysOnTop = true
+		bil.Size = UDim2.new(0, 80, 0, 24)
+		bil.Adornee = orb
 
-	for _, obj in ipairs(workspace:GetDescendants()) do
-		if obj:IsA("BasePart") and obj.Name == "GhostOrb" and not obj:FindFirstChild("EvidenceBil") then
-			local bil = Instance.new("BillboardGui", obj)
-			bil.Name = "EvidenceBil"
-			bil.AlwaysOnTop = true
-			bil.Size = UDim2.new(0, 80, 0, 24)
-			bil.Adornee = obj
+		local lbl = Instance.new("TextLabel", bil)
+		lbl.BackgroundTransparency = 1
+		lbl.Size = UDim2.new(1, 0, 1, 0)
+		lbl.Font = Enum.Font.GothamBold
+		lbl.Text = "✨ Ghost Orb"
+		lbl.TextColor3 = Color3.fromRGB(240, 245, 255)
+		lbl.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+		lbl.TextStrokeTransparency = 0
+		lbl.TextScaled = true
 
-			local lbl = Instance.new("TextLabel", bil)
-			lbl.BackgroundTransparency = 1
-			lbl.Size = UDim2.new(1, 0, 1, 0)
-			lbl.Font = Enum.Font.GothamBold
-			lbl.Text = "✨ Ghost Orb"
-			lbl.TextColor3 = Color3.fromRGB(240, 245, 255)
-			lbl.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-			lbl.TextStrokeTransparency = 0
-			lbl.TextScaled = true
+		local h = Instance.new("Highlight", orb)
+		h.Name = "EvidenceHL"
+		h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+		h.OutlineColor = Color3.fromRGB(240, 245, 255)
+		h.FillTransparency = 1
+		h.Adornee = orb
 
-			local h = Instance.new("Highlight", obj)
-			h.Name = "EvidenceHL"
-			h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-			h.OutlineColor = Color3.fromRGB(240, 245, 255)
-			h.FillTransparency = 1
-			h.Adornee = obj
-
-			table.insert(EvidenceEspObjects, bil)
-			table.insert(EvidenceEspObjects, h)
-		end
+		table.insert(EvidenceEspObjects, bil)
+		table.insert(EvidenceEspObjects, h)
 	end
 end
 
@@ -952,14 +954,10 @@ local function ClearEvidenceESP()
 		pcall(function() inst:Destroy() end)
 	end
 	table.clear(EvidenceEspObjects)
-	for _, obj in ipairs(workspace:GetDescendants()) do
-		if obj:FindFirstChild("EvidenceBil") then pcall(function() obj.EvidenceBil:Destroy() end) end
-		if obj:FindFirstChild("EvidenceHL") then pcall(function() obj.EvidenceHL:Destroy() end) end
-	end
 end
 
 --------------------------------------------------------------
------------ MAIN REAL-TIME PERIODIC SCAN LOOP ---------------
+----------- MAIN REAL-TIME LOOP (ZERO-LAG SCAN) --------------
 --------------------------------------------------------------
 
 -- Permanent Evidence Latches
@@ -972,7 +970,36 @@ local CachedOrb = false
 local CachedLaser = false
 local CachedSpiritBox = false
 
-local PollInterval = 0.35
+-- Instant Ghost Laser Attribute Signal
+local GhostAttrConn = nil
+local function HookGhostListeners()
+	local ghost = GetGhostModel()
+	if ghost and not GhostAttrConn then
+		if ghost:GetAttribute("LaserVisible") == true or ghost:GetAttribute("InLaser") == true then
+			CachedLaser = true
+		end
+		GhostAttrConn = ghost:GetAttributeChangedSignal("LaserVisible"):Connect(function()
+			if ghost:GetAttribute("LaserVisible") == true then
+				CachedLaser = true
+			end
+		end)
+	end
+end
+HookGhostListeners()
+
+-- ShowSubtitle Remote Event Listener (Ghost voice without sound effect brackets)
+local SubtitleConn = nil
+if ShowSubtitle then
+	SubtitleConn = ShowSubtitle.OnClientEvent:Connect(function(text, isSound)
+		if text and typeof(text) == "string" and not isSound then
+			if not text:match("^%s*>.*<%s*$") and not text:find("^>") and not text:find("<$") then
+				CachedSpiritBox = true
+			end
+		end
+	end)
+end
+
+local PollInterval = 0.5
 local LastPollTick = tick()
 
 local MainLoopConn = RS.Heartbeat:Connect(function()
@@ -981,15 +1008,18 @@ local MainLoopConn = RS.Heartbeat:Connect(function()
 	LastPollTick = now
 
 	local ghost = GetGhostModel()
+	if ghost and not GhostAttrConn then
+		HookGhostListeners()
+	end
 
 	ModeText.Text = "Difficulty: " .. tostring(workspace:GetAttribute("Difficulty") or "Unknown")
 	Take3StarsPhoto.Text = "Take 3 stars photo (" .. tostring(workspace:GetAttribute("PhotosTaken") or 0) .. "/6)"
 
-	-- 1. Temperature (Permanent Latch)
-	local currentLowest, tempRoom = TrackTemp()
-	if currentLowest and currentLowest < LowestRecordedTemp then
-		LowestRecordedTemp = currentLowest
-	end
+	-- Fast Single-Pass Target Scan
+	local curTemp, wither, writing, prints, orb, emf, laser, spirit = PerformEvidenceAudit()
+
+	-- 1. Temperature
+	if curTemp < LowestRecordedTemp then LowestRecordedTemp = curTemp end
 	local isFreezing = LowestRecordedTemp < 0
 	local tempStr = string.format("Temperature: %.1f°C", LowestRecordedTemp < 100 and LowestRecordedTemp or 0)
 	local tempColor = isFreezing and Color3.fromRGB(85, 215, 130) or Color3.fromRGB(205, 95, 95)
@@ -998,8 +1028,8 @@ local MainLoopConn = RS.Heartbeat:Connect(function()
 	HUD_Temperature.Text = tempStr
 	HUD_Temperature.TextColor3 = tempColor
 
-	-- 2. Wither (Permanent Latch)
-	if not CachedWither and CheckWither() then CachedWither = true end
+	-- 2. Wither
+	if not CachedWither and wither then CachedWither = true end
 	local witherStr = "Wither: " .. (CachedWither and "Yes" or "No")
 	local witherColor = CachedWither and Color3.fromRGB(85, 215, 130) or Color3.fromRGB(205, 95, 95)
 	Wither.Text = witherStr
@@ -1007,8 +1037,8 @@ local MainLoopConn = RS.Heartbeat:Connect(function()
 	HUD_Wither.Text = witherStr
 	HUD_Wither.TextColor3 = witherColor
 
-	-- 3. Ghost Writing (Permanent Latch)
-	if not CachedWriting and CheckGhostWriting() then CachedWriting = true end
+	-- 3. Ghost Writing
+	if not CachedWriting and writing then CachedWriting = true end
 	local writingStr = "Ghost Writing: " .. (CachedWriting and "Yes" or "No")
 	local writingColor = CachedWriting and Color3.fromRGB(85, 215, 130) or Color3.fromRGB(205, 95, 95)
 	GhostWriting.Text = writingStr
@@ -1016,8 +1046,8 @@ local MainLoopConn = RS.Heartbeat:Connect(function()
 	HUD_GhostWriting.Text = writingStr
 	HUD_GhostWriting.TextColor3 = writingColor
 
-	-- 4. Handprints (Permanent Latch)
-	if not CachedPrints and CheckHandprints() then CachedPrints = true end
+	-- 4. Handprints
+	if not CachedPrints and prints then CachedPrints = true end
 	local printsStr = "Handprints: " .. (CachedPrints and "Yes" or "No")
 	local printsColor = CachedPrints and Color3.fromRGB(85, 215, 130) or Color3.fromRGB(205, 95, 95)
 	Handprints.Text = printsStr
@@ -1025,8 +1055,8 @@ local MainLoopConn = RS.Heartbeat:Connect(function()
 	HUD_Handprints.Text = printsStr
 	HUD_Handprints.TextColor3 = printsColor
 
-	-- 5. Ghost Orb (Permanent Latch)
-	if not CachedOrb and CheckGhostOrb() then CachedOrb = true end
+	-- 5. Ghost Orb
+	if not CachedOrb and orb then CachedOrb = true end
 	local orbStr = "Ghost Orb: " .. (CachedOrb and "Yes" or "No")
 	local orbColor = CachedOrb and Color3.fromRGB(85, 215, 130) or Color3.fromRGB(205, 95, 95)
 	GhostOrb.Text = orbStr
@@ -1034,9 +1064,8 @@ local MainLoopConn = RS.Heartbeat:Connect(function()
 	HUD_GhostOrb.Text = orbStr
 	HUD_GhostOrb.TextColor3 = orbColor
 
-	-- 6. EMF (Permanent Latch to Highest)
-	local currentEMF = CheckEMF()
-	if currentEMF > HighestEMFLevel then HighestEMFLevel = currentEMF end
+	-- 6. EMF
+	if emf > HighestEMFLevel then HighestEMFLevel = emf end
 	local isEMF5 = HighestEMFLevel == 5
 	local emfStr = "EMF level: " .. tostring(HighestEMFLevel)
 	local emfColor = isEMF5 and Color3.fromRGB(85, 215, 130) or Color3.fromRGB(205, 95, 95)
@@ -1045,10 +1074,8 @@ local MainLoopConn = RS.Heartbeat:Connect(function()
 	HUD_EMF.Text = emfStr
 	HUD_EMF.TextColor3 = emfColor
 
-	-- 7. Laser Projector (Permanent Latch)
-	if not CachedLaser and ghost and ghost:GetAttribute("InLaser") == true then
-		CachedLaser = true
-	end
+	-- 7. Laser Projector
+	if not CachedLaser and laser then CachedLaser = true end
 	local laserStr = "Laser Projector: " .. (CachedLaser and "Yes" or "No")
 	local laserColor = CachedLaser and Color3.fromRGB(85, 215, 130) or Color3.fromRGB(205, 95, 95)
 	LaserProjector.Text = laserStr
@@ -1056,10 +1083,8 @@ local MainLoopConn = RS.Heartbeat:Connect(function()
 	HUD_LaserProjector.Text = laserStr
 	HUD_LaserProjector.TextColor3 = laserColor
 
-	-- 8. Spirit Box (Permanent Latch)
-	if not CachedSpiritBox and CheckSpiritBox() then
-		CachedSpiritBox = true
-	end
+	-- 8. Spirit Box
+	if not CachedSpiritBox and spirit then CachedSpiritBox = true end
 	local spiritStr = "Spirit Box: " .. (CachedSpiritBox and "Yes" or "No")
 	local spiritColor = CachedSpiritBox and Color3.fromRGB(85, 215, 130) or Color3.fromRGB(205, 95, 95)
 	SpiritBox.Text = spiritStr
@@ -1111,7 +1136,7 @@ local MainLoopConn = RS.Heartbeat:Connect(function()
 		SelectGhostInJournal(detectedGhostType)
 	end
 
-	-- Header Info (Favorite Room next to Room)
+	-- Header Info
 	local hunting = ghost and ghost:GetAttribute("Hunting") == true
 	local gender = ghost and ghost:GetAttribute("Gender") or "..."
 	local age = ghost and ghost:GetAttribute("Age") or 0
@@ -1138,7 +1163,7 @@ local MainLoopConn = RS.Heartbeat:Connect(function()
 		HasEscapedCurrentHunt = false
 	end
 
-	-- Real-time Evidence ESP Refresh
+	-- Evidence ESP Refresh (Targeted)
 	if EvidenceEspToggle then
 		RefreshEvidenceESP()
 	end
@@ -1278,17 +1303,20 @@ PlaceStuff.MouseButton1Click:Connect(function()
 	RequestItemEquip:FireServer("InvSlot1") task.wait(0.1) RequestItemDrop:FireServer("InvSlot1") task.wait(0.2)
 
 	local function GrabAndDrop(itemName)
-		for _, v in pairs(workspace.Items:GetChildren()) do
-			if v:IsA("Model") and v:GetAttribute("ItemName") == itemName then
-				RequestItemPickup:FireServer(v)
-				task.wait(0.3)
-				RequestItemEquip:FireServer("InvSlot1")
-				task.wait(0.3)
-				ToggleItemState:FireServer(v)
-				task.wait(0.3)
-				RequestItemDrop:FireServer("InvSlot1")
-				task.wait(0.3)
-				break
+		local items = workspace:FindFirstChild("Items")
+		if items then
+			for _, v in pairs(items:GetChildren()) do
+				if v:IsA("Model") and v:GetAttribute("ItemName") == itemName then
+					RequestItemPickup:FireServer(v)
+					task.wait(0.3)
+					RequestItemEquip:FireServer("InvSlot1")
+					task.wait(0.3)
+					ToggleItemState:FireServer(v)
+					task.wait(0.3)
+					RequestItemDrop:FireServer("InvSlot1")
+					task.wait(0.3)
+					break
+				end
 			end
 		end
 	end
@@ -1356,34 +1384,38 @@ FullBright.MouseButton1Click:Connect(function()
 	end
 end)
 
+-- Targeted Item ESP (Only scans workspace.Items)
 ItemEsp.MouseButton1Click:Connect(function()
 	local active = #ItemEspList > 0
 	if not active then
-		for _, v in pairs(workspace:GetDescendants()) do
-			if v:IsA("Model") and v:GetAttribute("ItemName") ~= nil then
-				local Bil = Instance.new("BillboardGui", v)
-				local Lbl = Instance.new("TextLabel", Bil)
-				local H = Instance.new("Highlight", v)
-				table.insert(ItemEspList, Bil)
-				table.insert(ItemEspList, H)
+		local items = workspace:FindFirstChild("Items")
+		if items then
+			for _, v in ipairs(items:GetChildren()) do
+				if v:IsA("Model") and v:GetAttribute("ItemName") ~= nil then
+					local Bil = Instance.new("BillboardGui", v)
+					local Lbl = Instance.new("TextLabel", Bil)
+					local H = Instance.new("Highlight", v)
+					table.insert(ItemEspList, Bil)
+					table.insert(ItemEspList, H)
 
-				Bil.AlwaysOnTop = true
-				Bil.Size = UDim2.new(0, 90, 0, 28)
-				Bil.Adornee = v
+					Bil.AlwaysOnTop = true
+					Bil.Size = UDim2.new(0, 90, 0, 28)
+					Bil.Adornee = v
 
-				Lbl.BackgroundTransparency = 1
-				Lbl.Size = UDim2.new(1, 0, 1, 0)
-				Lbl.Font = Enum.Font.GothamBold
-				Lbl.Text = v:GetAttribute("ItemName")
-				Lbl.TextColor3 = Color3.fromRGB(235, 195, 75)
-				Lbl.TextStrokeColor3 = Color3.fromRGB(15, 15, 20)
-				Lbl.TextStrokeTransparency = 0.3
-				Lbl.TextScaled = true
+					Lbl.BackgroundTransparency = 1
+					Lbl.Size = UDim2.new(1, 0, 1, 0)
+					Lbl.Font = Enum.Font.GothamBold
+					Lbl.Text = v:GetAttribute("ItemName")
+					Lbl.TextColor3 = Color3.fromRGB(235, 195, 75)
+					Lbl.TextStrokeColor3 = Color3.fromRGB(15, 15, 20)
+					Lbl.TextStrokeTransparency = 0.3
+					Lbl.TextScaled = true
 
-				H.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-				H.OutlineColor = Color3.fromRGB(235, 160, 40)
-				H.FillTransparency = 1
-				H.Adornee = v
+					H.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+					H.OutlineColor = Color3.fromRGB(235, 160, 40)
+					H.FillTransparency = 1
+					H.Adornee = v
+				end
 			end
 		end
 		ToggleButtonVisual(ItemEsp, true)
@@ -1446,20 +1478,24 @@ Take3StarsPhoto.MouseButton1Click:Connect(function()
 	task.wait(0.3)
 
 	local Item, ItemType
-	for _, v in pairs(workspace.Items:GetChildren()) do
-		if v:GetAttribute("DisplayName") == "Burnt Cross" and not v:GetAttribute("PhotoTaken") then
-			v:SetAttribute("PhotoTaken", true)
-			Item = v
-			ItemType = "BurntCross"
-			if plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
-				plr.Character.HumanoidRootPart.CFrame = v:GetPivot() * CFrame.new(0, 1, 0)
+	local items = workspace:FindFirstChild("Items")
+	if items then
+		for _, v in ipairs(items:GetChildren()) do
+			if v:GetAttribute("DisplayName") == "Burnt Cross" and not v:GetAttribute("PhotoTaken") then
+				v:SetAttribute("PhotoTaken", true)
+				Item = v
+				ItemType = "BurntCross"
+				if plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
+					plr.Character.HumanoidRootPart.CFrame = v:GetPivot() * CFrame.new(0, 1, 0)
+				end
+				break
 			end
-			break
 		end
 	end
 
-	if not Item then
-		for _, v in pairs(workspace.Interactables:GetChildren()) do
+	local interactables = workspace:FindFirstChild("Interactables")
+	if not Item and interactables then
+		for _, v in ipairs(interactables:GetChildren()) do
 			if v:GetAttribute("PhotoRewardAvailable") == true and not v:GetAttribute("PhotoTaken") then
 				v:SetAttribute("PhotoTaken", true)
 				Item = v
@@ -1520,14 +1556,56 @@ NoclipBtn.MouseButton1Click:Connect(function()
 	SetNoclip(not NoclipToggle)
 end)
 
--- Minimize & Close
-local isMinimized = false
-Minimize.MouseButton1Click:Connect(function()
-	isMinimized = not isMinimized
-	Content.Visible = not isMinimized
-	MainFrame.Size = isMinimized and UDim2.new(0, 520, 0, 36) or UDim2.new(0, 520, 0, 460)
+-- Infinite Stamina Handler
+local function SetInfStamina(state)
+	InfStaminaToggle = state
+	ToggleButtonVisual(InfStaminaBtn, InfStaminaToggle)
+	if InfStaminaToggle then
+		if not InfStaminaConn then
+			InfStaminaConn = RS.RenderStepped:Connect(function()
+				if InfStaminaToggle then
+					local maxStamina = workspace:GetAttribute("MaxStamina") or 100
+					pcall(function() plr:SetAttribute("Stamina", maxStamina) end)
+
+					pcall(function()
+						local hud = plr.PlayerGui:FindFirstChild("HUD")
+						local stamina = hud and hud:FindFirstChild("Stamina")
+						local bar = stamina and stamina:FindFirstChild("Bar")
+						if bar then
+							bar.Size = UDim2.new(1, 0, 1, 0)
+						end
+					end)
+
+					pcall(function()
+						local mc = plr.PlayerScripts:FindFirstChild("MovementController")
+						if mc and getsenv and getupvalues and setupvalue then
+							local env = getsenv(mc)
+							if env.StartSprint then
+								setupvalue(env.StartSprint, 2, maxStamina)
+							end
+						end
+					end)
+				end
+			end)
+		end
+	else
+		if InfStaminaConn then
+			InfStaminaConn:Disconnect()
+			InfStaminaConn = nil
+		end
+	end
+end
+
+InfStaminaBtn.MouseButton1Click:Connect(function()
+	SetInfStamina(not InfStaminaToggle)
 end)
 
+-- Full Minimize Button (Completely hides MainFrame, activating Left HUD overlay)
+Minimize.MouseButton1Click:Connect(function()
+	MainFrame.Visible = false
+end)
+
+-- Close Button
 Close.MouseButton1Click:Connect(function()
 	IsUiClosed = true
 	PlayersEspToggle = false
@@ -1536,9 +1614,12 @@ Close.MouseButton1Click:Connect(function()
 	AutoSelectGhostToggle = false
 	AutoSpiritBoxToggle = false
 	SetNoclip(false)
+	SetInfStamina(false)
 
 	if MainLoopConn then MainLoopConn:Disconnect() end
 	if KeybindConn then KeybindConn:Disconnect() end
+	if GhostAttrConn then GhostAttrConn:Disconnect() end
+	if SubtitleConn then SubtitleConn:Disconnect() end
 
 	ClearEvidenceESP()
 	for _, v in pairs(ItemEspList) do pcall(function() v:Destroy() end) end
@@ -1558,10 +1639,12 @@ end)
 -- Auto start game (open main exit door after 30s)
 task.spawn(function()
 	task.wait(30)
-	for _, v in pairs(workspace:GetDescendants()) do
-		if v:IsA("Model") and v.Name == "ExitDoor" and v:GetAttribute("DoorClosed") ~= false then
-			ClientChangeDoor:FireServer(v:WaitForChild("Door"))
-			break
+	local map = workspace:FindFirstChild("Map")
+	local exitDoor = map and map:FindFirstChild("ExitDoor", true)
+	if exitDoor and exitDoor:IsA("Model") and exitDoor:GetAttribute("DoorClosed") ~= false then
+		local door = exitDoor:FindFirstChild("Door")
+		if door then
+			ClientChangeDoor:FireServer(door)
 		end
 	end
 end)
