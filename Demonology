@@ -1,4 +1,4 @@
--- Demonology (Doppelganger & Fake Orb Detection • Hzyl Hub • Full Minimize • Inf Stamina • Accurate Laser • False-Positive Free • Zero Lag • Noclip • Left HUD)
+-- Demonology (1.5s Photo Delay • Teleport On Item & Look Down • Return Outside • Hzyl Hub • Doppelganger Fake Orb Detection • Full Minimize • Inf Stamina • Noclip)
 if not game:IsLoaded() then
 	game.Loaded:Wait()
 end
@@ -465,6 +465,7 @@ local InfStaminaConn = nil
 local IsUiClosed = false
 local LastAutoSelectedGhost = nil
 local IsDoppelgangerDetected = false
+local IsPhotoBusy = false
 
 local OldLightingList = {
 	Ambient = Lighting.Ambient,
@@ -565,6 +566,7 @@ local function DropItem(SlotNum)
 	return true
 end
 
+-- Guaranteed Safe Base Camp Van Teleport (Never clips/falls)
 local function TpOutside()
 	pcall(function()
 		local map = workspace:FindFirstChild("Map")
@@ -572,26 +574,181 @@ local function TpOutside()
 		local baseCamp = rooms and rooms:FindFirstChild("Base Camp")
 		local targetPart = nil
 		if baseCamp then
-			local pegboard = baseCamp:FindFirstChild("Pegboard")
-			targetPart = (pegboard and pegboard:FindFirstChild("Union")) or baseCamp:FindFirstChild("Table") or baseCamp:FindFirstChild("Truck") or baseCamp:FindFirstChild("BoundingBox")
-			if not targetPart then
-				for _, c in ipairs(baseCamp:GetChildren()) do
-					if c:IsA("BasePart") then
-						targetPart = c
-						break
-					elseif c:IsA("Model") and c.PrimaryPart then
-						targetPart = c.PrimaryPart
-						break
-					end
-				end
-			end
+			targetPart = baseCamp:FindFirstChild("Whiteboard") or baseCamp:FindFirstChild("Table") or baseCamp:FindFirstChild("Truck")
 		end
-		local char = plr.Character or plr.CharacterAdded:Wait()
-		if targetPart and char and char:FindFirstChild("HumanoidRootPart") then
-			char.HumanoidRootPart.CFrame = targetPart.CFrame + Vector3.new(0, 4, 0)
+		local char = plr.Character
+		if char and char:FindFirstChild("HumanoidRootPart") then
+			if targetPart then
+				char.HumanoidRootPart.CFrame = targetPart:GetPivot() + Vector3.new(0, 4, 0)
+			else
+				char.HumanoidRootPart.CFrame = CFrame.new(-0.85, -24.7, 467.8)
+			end
 		end
 	end)
 end
+
+-- Check if player is holding the Photo Camera in character
+local function IsHoldingPhotoCamera()
+	local char = plr.Character
+	if char then
+		for _, v in ipairs(char:GetChildren()) do
+			if v:IsA("Model") and v:GetAttribute("ItemName") == "Photo Camera" then
+				return true, v
+			end
+		end
+	end
+	return false, nil
+end
+
+-- Find Best 3-Star Target in Map
+local function FindBestPhotoTarget()
+	local photosTaken = workspace:GetAttribute("PhotosTaken") or 0
+	if photosTaken >= 6 then return nil, nil, 0 end
+
+	-- 1. Items Scan (Burnt Cross: 12, Wither: 8, Writing: 8, Salt: 8)
+	local items = workspace:FindFirstChild("Items")
+	if items then
+		for _, v in ipairs(items:GetChildren()) do
+			if not v:GetAttribute("PhotoTaken") then
+				local prt = v:GetAttribute("PhotoRewardType")
+				local iname = v:GetAttribute("ItemName")
+				local dname = v:GetAttribute("DisplayName")
+				
+				if prt == "BurntCross" or dname == "Burnt Cross" then
+					return v, "BurntCross", 12
+				elseif prt == "WitheredFlowers" or v:GetAttribute("Withered") == true then
+					return v, "WitheredFlowers", 8
+				elseif prt == "GhostWriting" or v:GetAttribute("Written") == true then
+					return v, "GhostWriting", 8
+				elseif prt == "DisturbedSalt" then
+					return v, "DisturbedSalt", 8
+				end
+			end
+		end
+	end
+
+	-- 2. Handprints / Footprints (Reward: 8)
+	local handprints = workspace:FindFirstChild("Handprints")
+	if handprints then
+		for _, h in ipairs(handprints:GetChildren()) do
+			if not h:GetAttribute("PhotoTaken") then
+				return h, "Handprint", 8
+			end
+		end
+	end
+
+	-- 3. Ghost (Reward: 24)
+	local ghost = workspace:FindFirstChild("Ghost")
+	if ghost and ghost:GetAttribute("PhotoRewardAvailable") ~= false and not ghost:GetAttribute("PhotoTaken") then
+		return ghost, "Ghost", 24
+	end
+
+	-- 4. Interactables / Doors / Switches (Reward: 8)
+	local interactables = workspace:FindFirstChild("Interactables")
+	if interactables then
+		for _, v in ipairs(interactables:GetChildren()) do
+			if v:GetAttribute("PhotoRewardAvailable") == true and not v:GetAttribute("PhotoTaken") then
+				return v, "Interaction", 8
+			end
+		end
+	end
+
+	return nil, nil, 0
+end
+
+-- Teleport directly on top of item, look straight down at it, wait 1.5s delay, take picture, and return outside
+local function TeleportSnapAndReturn(target, targetType, reward)
+	if not target or not targetType or IsPhotoBusy then return false end
+	IsPhotoBusy = true
+
+	local char = plr.Character
+	local hrp = char and char:FindFirstChild("HumanoidRootPart")
+	if not hrp then
+		IsPhotoBusy = false
+		return false
+	end
+
+	pcall(function() target:SetAttribute("PhotoTaken", true) end)
+	local targetPos = target:GetPivot().Position
+
+	pcall(function()
+		-- 1. Position safely above item looking directly down
+		hrp.Anchored = true
+		hrp.CFrame = CFrame.new(targetPos + Vector3.new(0, 3, 0)) * CFrame.Angles(-math.rad(89), 0, 0)
+		
+		-- 1.5-second camera settling delay
+		task.wait(1.5)
+
+		-- 2. Fire Photo Remote (RemoteFunction InvokeServer)
+		local camPos = targetPos + Vector3.new(0, 2.5, 0)
+		local photoCFrame = CFrame.lookAt(camPos, targetPos)
+		
+		if TakePhotoEvent:IsA("RemoteFunction") then
+			TakePhotoEvent:InvokeServer(photoCFrame, {
+				Stars = 3,
+				Type = targetType,
+				Object = target,
+				Reward = reward or 8
+			})
+		else
+			TakePhotoEvent:FireServer(photoCFrame, {
+				Stars = 3,
+				Type = targetType,
+				Object = target,
+				Reward = reward or 8
+			})
+		end
+
+		task.wait(0.2)
+		-- 3. Teleport safely back outside to Base Camp
+		TpOutside()
+	end)
+
+	-- Guaranteed safety cleanup: ensure character is unanchored
+	task.wait(0.1)
+	pcall(function()
+		if hrp then hrp.Anchored = false end
+		for _, p in ipairs(char:GetDescendants()) do
+			if p:IsA("BasePart") then p.Anchored = false end
+		end
+	end)
+
+	IsPhotoBusy = false
+	return true
+end
+
+-- Right-Click (MouseButton2) Helper: Enhance Right Click when holding Photo Camera
+local RightClickConn = UIS.InputBegan:Connect(function(input, processed)
+	if processed then return end
+	if input.UserInputType == Enum.UserInputType.MouseButton2 then
+		local holdingCam = IsHoldingPhotoCamera()
+		if holdingCam and not IsPhotoBusy then
+			local target, ttype, reward = FindBestPhotoTarget()
+			if target then
+				pcall(function() target:SetAttribute("PhotoTaken", true) end)
+				local targetPos = target:GetPivot().Position
+				local camPos = workspace.CurrentCamera.CFrame.Position
+				local photoCFrame = CFrame.lookAt(camPos, targetPos)
+				
+				if TakePhotoEvent:IsA("RemoteFunction") then
+					TakePhotoEvent:InvokeServer(photoCFrame, {
+						Stars = 3,
+						Type = ttype,
+						Object = target,
+						Reward = reward or 8
+					})
+				else
+					TakePhotoEvent:FireServer(photoCFrame, {
+						Stars = 3,
+						Type = ttype,
+						Object = target,
+						Reward = reward or 8
+					})
+				end
+			end
+		end
+	end
+end)
 
 --------------------------------------------------------------
 ----------- AUTO SPIRIT BOX DEDICATED ROUTINE ---------------
@@ -1445,7 +1602,14 @@ TakeAPhoto.MouseButton1Click:Connect(function()
 	end
 	task.wait(0.3)
 	if ghost then
-		TakePhotoEvent:FireServer(workspace.CurrentCamera.CFrame, { Stars = 3, Type = "Ghost", Object = ghost, Reward = 24 })
+		local targetPos = ghost:GetPivot().Position
+		local camPos = workspace.CurrentCamera.CFrame.Position
+		local photoCFrame = CFrame.lookAt(camPos, targetPos)
+		if TakePhotoEvent:IsA("RemoteFunction") then
+			TakePhotoEvent:InvokeServer(photoCFrame, { Stars = 3, Type = "Ghost", Object = ghost, Reward = 24 })
+		else
+			TakePhotoEvent:FireServer(photoCFrame, { Stars = 3, Type = "Ghost", Object = ghost, Reward = 24 })
+		end
 	end
 end)
 
@@ -1562,6 +1726,7 @@ AutoSelectGhost.MouseButton1Click:Connect(function()
 	end
 end)
 
+-- Take 3-Star Photo button (Teleports directly on item, waits 1.5s, takes picture, and returns safely outside)
 Take3StarsPhoto.MouseButton1Click:Connect(function()
 	local hasCam, slot = CheckInventory("Photo Camera")
 	if not hasCam then
@@ -1577,47 +1742,9 @@ Take3StarsPhoto.MouseButton1Click:Connect(function()
 	end
 	task.wait(0.3)
 
-	local Item, ItemType
-	local items = workspace:FindFirstChild("Items")
-	if items then
-		for _, v in ipairs(items:GetChildren()) do
-			if v:GetAttribute("DisplayName") == "Burnt Cross" and not v:GetAttribute("PhotoTaken") then
-				v:SetAttribute("PhotoTaken", true)
-				Item = v
-				ItemType = "BurntCross"
-				if plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
-					plr.Character.HumanoidRootPart.CFrame = v:GetPivot() * CFrame.new(0, 1, 0)
-				end
-				break
-			end
-		end
-	end
-
-	local interactables = workspace:FindFirstChild("Interactables")
-	if not Item and interactables then
-		for _, v in ipairs(interactables:GetChildren()) do
-			if v:GetAttribute("PhotoRewardAvailable") == true and not v:GetAttribute("PhotoTaken") then
-				v:SetAttribute("PhotoTaken", true)
-				Item = v
-				ItemType = "Interaction"
-				if plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
-					plr.Character.HumanoidRootPart.CFrame = v:GetPivot() * CFrame.new(0, 1, 0)
-				end
-				break
-			end
-		end
-	end
-
-	if Item then
-		task.wait(0.2)
-		TakePhotoEvent:FireServer(workspace.CurrentCamera.CFrame, {
-			Stars = 3,
-			Type = ItemType,
-			Object = Item,
-			Reward = (ItemType == "BurntCross" and 12 or 8)
-		})
-		task.wait(0.5)
-		TpOutside()
+	local target, ttype, reward = FindBestPhotoTarget()
+	if target then
+		TeleportSnapAndReturn(target, ttype, reward)
 	end
 end)
 
@@ -1718,6 +1845,7 @@ Close.MouseButton1Click:Connect(function()
 
 	if MainLoopConn then MainLoopConn:Disconnect() end
 	if KeybindConn then KeybindConn:Disconnect() end
+	if RightClickConn then RightClickConn:Disconnect() end
 	if GhostAttrConn then GhostAttrConn:Disconnect() end
 	if SubtitleConn then SubtitleConn:Disconnect() end
 
