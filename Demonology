@@ -1,0 +1,1567 @@
+-- Demonology (Noclip Added • Top-Middle Mobile Toggle • Custom Logo • 1-Time Hunt Escape • Left HUD • Big Text)
+if not game:IsLoaded() then
+	game.Loaded:Wait()
+end
+
+if getgenv()["DemonologyUI"] == nil then
+	getgenv()["DemonologyUI"] = true
+else
+	game:GetService("StarterGui"):SetCore("SendNotification", {
+		Title = "GUI Already Active",
+		Text = "Please close the previous GUI to open a new one.",
+		Duration = 4
+	})
+	return
+end
+
+-- Services
+local RS = game:GetService("RunService")
+local PS = game:GetService("Players")
+local UIS = game:GetService("UserInputService")
+local Lighting = game:GetService("Lighting")
+local StarterGui = game:GetService("StarterGui")
+local CoreGui = game:GetService("CoreGui")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Events = ReplicatedStorage:WaitForChild("Events")
+local plr = PS.LocalPlayer
+
+-- Load Custom Logo Asset
+local LogoAssetId = ""
+local LogoUrl = "https://cdn.discordapp.com/attachments/953588842437439498/1541462963179753572/ZYL.png?ex=6a8daec1&is=6a8c5d41&hm=ec5c21cb238c53baa2afc7f3c81cd2f0e36d78d1939d954bb687581f254c7b7b&"
+
+pcall(function()
+	if writefile and (getcustomasset or getsynasset) then
+		local filename = "ZYL_Demonology_Logo.png"
+		if not isfile(filename) then
+			writefile(filename, game:HttpGet(LogoUrl))
+		end
+		LogoAssetId = (getcustomasset and getcustomasset(filename)) or (getsynasset and getsynasset(filename))
+	end
+end)
+
+-- GUI Setup (CoreGui)
+local DemonologyPRO = Instance.new("ScreenGui")
+DemonologyPRO.Name = "DemonologyPRO"
+DemonologyPRO.ResetOnSpawn = false
+DemonologyPRO.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+pcall(function()
+	if syn and syn.protect_gui then
+		syn.protect_gui(DemonologyPRO)
+	end
+end)
+DemonologyPRO.Parent = (gethui and gethui()) or CoreGui
+
+--------------------------------------------------------------
+----------- MOBILE FLOATING TOGGLE BUTTON (TOP MIDDLE) -------
+--------------------------------------------------------------
+
+local MobileToggle = Instance.new("ImageButton")
+MobileToggle.Name = "MobileToggleBtn"
+MobileToggle.Parent = DemonologyPRO
+MobileToggle.AnchorPoint = Vector2.new(0.5, 0)
+MobileToggle.Size = UDim2.new(0, 46, 0, 46)
+MobileToggle.Position = UDim2.new(0.5, 0, 0, 10)
+MobileToggle.BackgroundColor3 = Color3.fromRGB(24, 28, 38)
+MobileToggle.BackgroundTransparency = 0.2
+MobileToggle.BorderSizePixel = 0
+MobileToggle.Active = true
+MobileToggle.Draggable = true
+MobileToggle.Image = ""
+
+local MobCorner = Instance.new("UICorner", MobileToggle)
+MobCorner.CornerRadius = UDim.new(0, 12)
+
+local MobStroke = Instance.new("UIStroke", MobileToggle)
+MobStroke.Color = Color3.fromRGB(60, 72, 95)
+MobStroke.Thickness = 1.5
+
+local MobLogo = Instance.new("ImageLabel", MobileToggle)
+MobLogo.Size = UDim2.new(0, 32, 0, 32)
+MobLogo.Position = UDim2.new(0.5, -16, 0.5, -16)
+MobLogo.BackgroundTransparency = 1
+MobLogo.Image = LogoAssetId
+
+--------------------------------------------------------------
+----------------- MAIN WINDOW (CENTERED) ---------------------
+--------------------------------------------------------------
+
+local MainFrame = Instance.new("Frame")
+MainFrame.Name = "MainFrame"
+MainFrame.Parent = DemonologyPRO
+MainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+MainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
+MainFrame.Size = UDim2.new(0, 520, 0, 460)
+MainFrame.BackgroundColor3 = Color3.fromRGB(18, 22, 30)
+MainFrame.BackgroundTransparency = 0.30
+MainFrame.BorderSizePixel = 0
+MainFrame.Active = true
+MainFrame.Draggable = true
+MainFrame.ClipsDescendants = false
+
+local MainCorner = Instance.new("UICorner", MainFrame)
+MainCorner.CornerRadius = UDim.new(0, 10)
+
+local MainStroke = Instance.new("UIStroke", MainFrame)
+MainStroke.Color = Color3.fromRGB(50, 60, 78)
+MainStroke.Thickness = 1.2
+
+-- Mobile Toggle Click Connection
+MobileToggle.MouseButton1Click:Connect(function()
+	MainFrame.Visible = not MainFrame.Visible
+end)
+
+-- Grey Top Bar (With Title Logo)
+local TitleBar = Instance.new("Frame", MainFrame)
+TitleBar.Size = UDim2.new(1, 0, 0, 36)
+TitleBar.BackgroundColor3 = Color3.fromRGB(36, 42, 54)
+TitleBar.BackgroundTransparency = 0.15
+TitleBar.BorderSizePixel = 0
+Instance.new("UICorner", TitleBar).CornerRadius = UDim.new(0, 10)
+
+local TitleStroke = Instance.new("UIStroke", TitleBar)
+TitleStroke.Color = Color3.fromRGB(60, 70, 88)
+TitleStroke.Thickness = 1
+
+local TitleLogo = Instance.new("ImageLabel", TitleBar)
+TitleLogo.Size = UDim2.new(0, 24, 0, 24)
+TitleLogo.Position = UDim2.new(0, 10, 0.5, -12)
+TitleLogo.BackgroundTransparency = 1
+TitleLogo.Image = LogoAssetId
+
+local TitleText = Instance.new("TextLabel", TitleBar)
+TitleText.Size = UDim2.new(0.65, 0, 1, 0)
+TitleText.Position = UDim2.new(0, 40, 0, 0)
+TitleText.BackgroundTransparency = 1.000
+TitleText.Font = Enum.Font.GothamBold
+TitleText.Text = "Demonology"
+TitleText.TextColor3 = Color3.fromRGB(240, 245, 255)
+TitleText.TextStrokeColor3 = Color3.fromRGB(15, 15, 20)
+TitleText.TextStrokeTransparency = 0.3
+TitleText.TextSize = 18
+TitleText.TextXAlignment = Enum.TextXAlignment.Left
+
+local Minimize = Instance.new("TextButton", TitleBar)
+Minimize.Size = UDim2.new(0, 30, 0, 24)
+Minimize.Position = UDim2.new(1, -70, 0.5, -12)
+Minimize.BackgroundColor3 = Color3.fromRGB(52, 60, 76)
+Minimize.BackgroundTransparency = 0.15
+Minimize.Font = Enum.Font.GothamBold
+Minimize.Text = "_"
+Minimize.TextColor3 = Color3.fromRGB(240, 240, 240)
+Minimize.TextStrokeColor3 = Color3.fromRGB(15, 15, 20)
+Minimize.TextStrokeTransparency = 0.3
+Minimize.TextSize = 15
+Instance.new("UICorner", Minimize).CornerRadius = UDim.new(0, 5)
+
+local Close = Instance.new("TextButton", TitleBar)
+Close.Size = UDim2.new(0, 30, 0, 24)
+Close.Position = UDim2.new(1, -36, 0.5, -12)
+Close.BackgroundColor3 = Color3.fromRGB(180, 50, 60)
+Close.BackgroundTransparency = 0.15
+Close.Font = Enum.Font.GothamBold
+Close.Text = "X"
+Close.TextColor3 = Color3.fromRGB(255, 255, 255)
+Close.TextStrokeColor3 = Color3.fromRGB(15, 15, 20)
+Close.TextStrokeTransparency = 0.3
+Close.TextSize = 13
+Instance.new("UICorner", Close).CornerRadius = UDim.new(0, 5)
+
+-- Content Container
+local Content = Instance.new("Frame", MainFrame)
+Content.Size = UDim2.new(1, -20, 1, -48)
+Content.Position = UDim2.new(0, 10, 0, 42)
+Content.BackgroundTransparency = 1.000
+
+-- 1. Live Ghost & Room Info Box
+local InfoBox = Instance.new("Frame", Content)
+InfoBox.Size = UDim2.new(1, 0, 0, 54)
+InfoBox.BackgroundTransparency = 1.000
+
+local Ghost = Instance.new("TextLabel", InfoBox)
+Ghost.Size = UDim2.new(1, 0, 0, 26)
+Ghost.Position = UDim2.new(0, 2, 0, 0)
+Ghost.BackgroundTransparency = 1.000
+Ghost.Font = Enum.Font.GothamBold
+Ghost.Text = "Ghost: ... | Type: ... | Age: 0"
+Ghost.TextColor3 = Color3.fromRGB(245, 245, 250)
+Ghost.TextStrokeColor3 = Color3.fromRGB(15, 15, 20)
+Ghost.TextStrokeTransparency = 0.25
+Ghost.TextSize = 17
+Ghost.TextTruncate = Enum.TextTruncate.AtEnd
+Ghost.TextXAlignment = Enum.TextXAlignment.Left
+
+local CurrentRoom = Instance.new("TextLabel", InfoBox)
+CurrentRoom.Size = UDim2.new(1, 0, 0, 24)
+CurrentRoom.Position = UDim2.new(0, 2, 0, 28)
+CurrentRoom.BackgroundTransparency = 1.000
+CurrentRoom.Font = Enum.Font.GothamBold
+CurrentRoom.Text = "Current room: ... | Favorite room: ..."
+CurrentRoom.TextColor3 = Color3.fromRGB(170, 215, 245)
+CurrentRoom.TextStrokeColor3 = Color3.fromRGB(15, 15, 20)
+CurrentRoom.TextStrokeTransparency = 0.25
+CurrentRoom.TextSize = 16
+CurrentRoom.TextTruncate = Enum.TextTruncate.AtEnd
+CurrentRoom.TextXAlignment = Enum.TextXAlignment.Left
+
+-- 2. Evidence Status Grid (2 Columns x 4 Rows)
+local EvidenceGrid = Instance.new("Frame", Content)
+EvidenceGrid.Size = UDim2.new(1, 0, 0, 94)
+EvidenceGrid.Position = UDim2.new(0, 0, 0, 60)
+EvidenceGrid.BackgroundTransparency = 1.000
+
+local EvUIGrid = Instance.new("UIGridLayout", EvidenceGrid)
+EvUIGrid.CellSize = UDim2.new(0.485, 0, 0, 21)
+EvUIGrid.CellPadding = UDim2.new(0.02, 0, 0, 3)
+
+local function CreateEvLabel(name, text)
+	local lbl = Instance.new("TextLabel", EvidenceGrid)
+	lbl.Name = name
+	lbl.BackgroundTransparency = 1.000
+	lbl.Font = Enum.Font.GothamBold
+	lbl.Text = text
+	lbl.TextColor3 = Color3.fromRGB(205, 95, 95)
+	lbl.TextStrokeColor3 = Color3.fromRGB(15, 15, 20)
+	lbl.TextStrokeTransparency = 0.25
+	lbl.TextSize = 16
+	lbl.TextXAlignment = Enum.TextXAlignment.Left
+	return lbl
+end
+
+local EMF = CreateEvLabel("EMF", "EMF level: 0")
+local Handprints = CreateEvLabel("Handprints", "Handprints: No")
+local Temperature = CreateEvLabel("Temperature", "Temperature: 0°C")
+local SpiritBox = CreateEvLabel("SpiritBox", "Spirit Box: No")
+local GhostOrb = CreateEvLabel("GhostOrb", "Ghost Orb: No")
+local GhostWriting = CreateEvLabel("GhostWriting", "Ghost Writing: No")
+local LaserProjector = CreateEvLabel("LaserProjector", "Laser Projector: No")
+local Wither = CreateEvLabel("Wither", "Wither: No")
+
+-- 3. Player Energy Status Bar
+local EnergyBar = Instance.new("Frame", Content)
+EnergyBar.Size = UDim2.new(1, 0, 0, 22)
+EnergyBar.Position = UDim2.new(0, 0, 0, 160)
+EnergyBar.BackgroundTransparency = 1.000
+
+local EnergyText = Instance.new("TextLabel", EnergyBar)
+EnergyText.Size = UDim2.new(1, 0, 1, 0)
+EnergyText.Position = UDim2.new(0, 2, 0, 0)
+EnergyText.BackgroundTransparency = 1.000
+EnergyText.Font = Enum.Font.GothamBold
+EnergyText.Text = "Player energy: Loading..."
+EnergyText.TextColor3 = Color3.fromRGB(120, 190, 240)
+EnergyText.TextStrokeColor3 = Color3.fromRGB(15, 15, 20)
+EnergyText.TextStrokeTransparency = 0.25
+EnergyText.TextSize = 15
+EnergyText.TextTruncate = Enum.TextTruncate.AtEnd
+EnergyText.TextXAlignment = Enum.TextXAlignment.Left
+
+-- 4. Action Buttons Grid (15 Active Feature Buttons)
+local ButtonsContainer = Instance.new("Frame", Content)
+ButtonsContainer.Size = UDim2.new(1, 0, 0, 190)
+ButtonsContainer.Position = UDim2.new(0, 0, 0, 188)
+ButtonsContainer.BackgroundTransparency = 1.000
+
+local BGrid = Instance.new("UIGridLayout", ButtonsContainer)
+BGrid.CellSize = UDim2.new(0.235, 0, 0, 42)
+BGrid.CellPadding = UDim2.new(0.018, 0, 0, 6)
+
+local function CreateBtn(name, text)
+	local btn = Instance.new("TextButton", ButtonsContainer)
+	btn.Name = name
+	btn.BackgroundColor3 = Color3.fromRGB(26, 31, 44)
+	btn.BackgroundTransparency = 0.1
+	btn.BorderSizePixel = 0
+	btn.Font = Enum.Font.GothamBold
+	btn.Text = text
+	btn.TextColor3 = Color3.fromRGB(235, 240, 250)
+	btn.TextStrokeColor3 = Color3.fromRGB(15, 15, 20)
+	btn.TextStrokeTransparency = 0.3
+	btn.TextSize = 14
+	btn.TextWrapped = true
+
+	local pad = Instance.new("UIPadding", btn)
+	pad.PaddingLeft = UDim.new(0, 3)
+	pad.PaddingRight = UDim.new(0, 3)
+	pad.PaddingTop = UDim.new(0, 2)
+	pad.PaddingBottom = UDim.new(0, 2)
+
+	Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
+	local stroke = Instance.new("UIStroke", btn)
+	stroke.Color = Color3.fromRGB(52, 62, 85)
+	stroke.Thickness = 1.2
+	return btn
+end
+
+-- 15 Feature Buttons
+local GhostEsp = CreateBtn("GhostEsp", "Ghost esp")
+local EscapeHunt = CreateBtn("EscapeHunt", "Hunt escape")
+local PlaceStuff = CreateBtn("PlaceStuff", "Place stuffs near ghost")
+local TurnOnFuse = CreateBtn("TurnOnFuse", "Turn on fuse")
+
+local AutoSpiritBox = CreateBtn("AutoSpiritBox", "Auto spirit box")
+local TakeAPhoto = CreateBtn("TakeAPhoto", "Take a photo ghost")
+local ToggleLights = CreateBtn("ToggleLights", "Toggle all lights")
+local FullBright = CreateBtn("FullBright", "Full bright")
+
+local ItemEsp = CreateBtn("ItemEsp", "Item esp")
+local PlayersEsp = CreateBtn("PlayersEsp", "Players esp")
+local EvidenceEsp = CreateBtn("EvidenceEsp", "Handprints, Orb esp")
+local Take3StarsPhoto = CreateBtn("Take3StarsPhoto", "Take 3 stars photo")
+
+local AutoEvidence = CreateBtn("AutoEvidence", "Auto evidence")
+local AutoSelectGhost = CreateBtn("AutoSelectGhost", "Auto select ghost")
+local NoclipBtn = CreateBtn("NoclipBtn", "Noclip")
+
+-- 5. Bottom Status Bar (Difficulty)
+local BottomBar = Instance.new("Frame", Content)
+BottomBar.Size = UDim2.new(1, 0, 0, 22)
+BottomBar.Position = UDim2.new(0, 0, 1, -22)
+BottomBar.BackgroundTransparency = 1.000
+
+local ModeText = Instance.new("TextLabel", BottomBar)
+ModeText.Size = UDim2.new(1, 0, 1, 0)
+ModeText.Position = UDim2.new(0, 2, 0, 0)
+ModeText.BackgroundTransparency = 1.000
+ModeText.Font = Enum.Font.GothamBold
+ModeText.Text = "Difficulty: " .. tostring(workspace:GetAttribute("Difficulty") or "Unknown")
+ModeText.TextColor3 = Color3.fromRGB(200, 205, 220)
+ModeText.TextStrokeColor3 = Color3.fromRGB(15, 15, 20)
+ModeText.TextStrokeTransparency = 0.3
+ModeText.TextSize = 15
+ModeText.TextXAlignment = Enum.TextXAlignment.Left
+
+--------------------------------------------------------------
+------------ LEFT-SIDE EVIDENCE HUD OVERLAY ------------------
+--------------------------------------------------------------
+
+local HUDOverlay = Instance.new("Frame")
+HUDOverlay.Name = "EvidenceHUDOverlay"
+HUDOverlay.Parent = DemonologyPRO
+HUDOverlay.AnchorPoint = Vector2.new(0, 0.5)
+HUDOverlay.Position = UDim2.new(0, 12, 0.5, 0)
+HUDOverlay.Size = UDim2.new(0, 250, 0, 310)
+HUDOverlay.BackgroundColor3 = Color3.fromRGB(16, 20, 28)
+HUDOverlay.BackgroundTransparency = 0.35
+HUDOverlay.BorderSizePixel = 0
+HUDOverlay.Visible = false
+HUDOverlay.Active = true
+HUDOverlay.Draggable = true
+
+local HUDCorner = Instance.new("UICorner", HUDOverlay)
+HUDCorner.CornerRadius = UDim.new(0, 9)
+
+local HUDStroke = Instance.new("UIStroke", HUDOverlay)
+HUDStroke.Color = Color3.fromRGB(48, 58, 76)
+HUDStroke.Thickness = 1.2
+
+local HUDTitle = Instance.new("TextLabel", HUDOverlay)
+HUDTitle.Size = UDim2.new(1, -16, 0, 24)
+HUDTitle.Position = UDim2.new(0, 10, 0, 8)
+HUDTitle.BackgroundTransparency = 1
+HUDTitle.Font = Enum.Font.GothamBold
+HUDTitle.Text = "Demonology Evidences"
+HUDTitle.TextColor3 = Color3.fromRGB(150, 195, 240)
+HUDTitle.TextStrokeColor3 = Color3.fromRGB(10, 10, 15)
+HUDTitle.TextStrokeTransparency = 0.3
+HUDTitle.TextSize = 15
+HUDTitle.TextXAlignment = Enum.TextXAlignment.Left
+
+local HUDGhost = Instance.new("TextLabel", HUDOverlay)
+HUDGhost.Size = UDim2.new(1, -16, 0, 22)
+HUDGhost.Position = UDim2.new(0, 10, 0, 34)
+HUDGhost.BackgroundTransparency = 1
+HUDGhost.Font = Enum.Font.GothamBold
+HUDGhost.Text = "Ghost: ... | Type: ..."
+HUDGhost.TextColor3 = Color3.fromRGB(240, 240, 245)
+HUDGhost.TextStrokeColor3 = Color3.fromRGB(10, 10, 15)
+HUDGhost.TextStrokeTransparency = 0.3
+HUDGhost.TextSize = 15
+HUDGhost.TextTruncate = Enum.TextTruncate.AtEnd
+HUDGhost.TextXAlignment = Enum.TextXAlignment.Left
+
+local HUDRoom = Instance.new("TextLabel", HUDOverlay)
+HUDRoom.Size = UDim2.new(1, -16, 0, 20)
+HUDRoom.Position = UDim2.new(0, 10, 0, 58)
+HUDRoom.BackgroundTransparency = 1
+HUDRoom.Font = Enum.Font.GothamBold
+HUDRoom.Text = "Room: ... | Fav: ..."
+HUDRoom.TextColor3 = Color3.fromRGB(170, 215, 245)
+HUDRoom.TextStrokeColor3 = Color3.fromRGB(10, 10, 15)
+HUDRoom.TextStrokeTransparency = 0.3
+HUDRoom.TextSize = 14
+HUDRoom.TextTruncate = Enum.TextTruncate.AtEnd
+HUDRoom.TextXAlignment = Enum.TextXAlignment.Left
+
+local HUDEvList = Instance.new("Frame", HUDOverlay)
+HUDEvList.Size = UDim2.new(1, -16, 0, 210)
+HUDEvList.Position = UDim2.new(0, 10, 0, 84)
+HUDEvList.BackgroundTransparency = 1
+
+local HUDListLayout = Instance.new("UIListLayout", HUDEvList)
+HUDListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+HUDListLayout.Padding = UDim.new(0, 4)
+
+local function CreateHUDLabel(name, text)
+	local lbl = Instance.new("TextLabel", HUDEvList)
+	lbl.Name = name
+	lbl.Size = UDim2.new(1, 0, 0, 21)
+	lbl.BackgroundTransparency = 1
+	lbl.Font = Enum.Font.GothamBold
+	lbl.Text = text
+	lbl.TextColor3 = Color3.fromRGB(205, 95, 95)
+	lbl.TextStrokeColor3 = Color3.fromRGB(10, 10, 15)
+	lbl.TextStrokeTransparency = 0.3
+	lbl.TextSize = 14
+	lbl.TextXAlignment = Enum.TextXAlignment.Left
+	return lbl
+end
+
+local HUD_EMF = CreateHUDLabel("HUD_EMF", "EMF level: 0")
+local HUD_Handprints = CreateHUDLabel("HUD_Handprints", "Handprints: No")
+local HUD_Temperature = CreateHUDLabel("HUD_Temperature", "Temperature: 0°C")
+local HUD_SpiritBox = CreateHUDLabel("HUD_SpiritBox", "Spirit Box: No")
+local HUD_GhostOrb = CreateHUDLabel("HUD_GhostOrb", "Ghost Orb: No")
+local HUD_GhostWriting = CreateHUDLabel("HUD_GhostWriting", "Ghost Writing: No")
+local HUD_LaserProjector = CreateHUDLabel("HUD_LaserProjector", "Laser Projector: No")
+local HUD_Wither = CreateHUDLabel("HUD_Wither", "Wither: No")
+
+-- Auto switch HUD Visibility when MainFrame hides/shows
+local function UpdateHUDVisibility()
+	HUDOverlay.Visible = not MainFrame.Visible
+end
+MainFrame:GetPropertyChangedSignal("Visible"):Connect(UpdateHUDVisibility)
+
+--------------------------------------------------------------
+------------------ CORE UTILITY FUNCTIONS --------------------
+--------------------------------------------------------------
+
+local LightToggleStatus = false
+local IsEscapeHunt = false
+local HasEscapedCurrentHunt = false
+local AutoSpiritBoxToggle = false
+local PlayersEspToggle = false
+local AutoEvidenceToggle = false
+local AutoSelectGhostToggle = false
+local EvidenceEspToggle = false
+local NoclipToggle = false
+local NoclipConn = nil
+local IsUiClosed = false
+
+local OldLightingList = {
+	Ambient = Lighting.Ambient,
+	OutdoorAmbient = Lighting.OutdoorAmbient,
+	Brightness = Lighting.Brightness,
+	GlobalShadows = Lighting.GlobalShadows,
+	FogEnd = Lighting.FogEnd
+}
+
+local ItemEspList = {}
+local EvidenceEspObjects = {}
+
+local BillboardGui = Instance.new("BillboardGui")
+local GhostBillboardTextLabel = Instance.new("TextLabel")
+local HL = Instance.new("Highlight")
+BillboardGui.Enabled = false
+HL.Enabled = false
+
+-- Remotes
+local RequestItemEquip         = Events:WaitForChild("RequestItemEquip")
+local RequestItemPickup        = Events:WaitForChild("RequestItemPickup")
+local RequestItemDrop          = Events:WaitForChild("RequestItemDrop")
+local AskSpiritBoxFromUI       = Events:WaitForChild("AskSpiritBoxFromUI")
+local ToggleFuseBox            = Events:WaitForChild("ToggleFuseBox")
+local TakePhotoEvent           = Events:WaitForChild("TakePhotoWithCamera")
+local ToggleItemState          = Events:WaitForChild("ToggleItemState")
+local UseLightSwitch           = Events:WaitForChild("UseLightSwitch")
+local ClientChangeDoor         = Events:WaitForChild("ClientChangeDoorState")
+local EvidenceMarkedInJournal  = Events:WaitForChild("EvidenceMarkedInJournal")
+
+-- Keybind Handler: Left Alt Toggle
+local KeybindConn = UIS.InputBegan:Connect(function(input, processed)
+	if input.KeyCode == Enum.KeyCode.LeftAlt then
+		MainFrame.Visible = not MainFrame.Visible
+	end
+end)
+
+local function GetRoomsFolder()
+	local map = workspace:FindFirstChild("Map")
+	return map and map:FindFirstChild("Rooms")
+end
+
+local function GetGhostModel()
+	return workspace:FindFirstChild("Ghost")
+end
+
+local function CheckInventory(ItemName)
+	for _, obj in ipairs(plr.PlayerGui.Hotbar.Slots:GetChildren()) do
+		if obj:IsA("Frame") and string.find(string.lower(obj.Name), "invslot") then
+			if obj.ItemName.Text == ItemName then
+				return true, tonumber(obj.Name:match("%d+"))
+			end
+		end
+	end
+	return false, nil
+end
+
+local function FindItem(ItemName)
+	for _, v in pairs(workspace.Items:GetChildren()) do
+		if v:IsA("Model") and v:GetAttribute("ItemName") == ItemName then
+			return true, v
+		end
+	end
+	return false, nil
+end
+
+local function ActiveItem()
+	local Chara = plr.Character
+	if Chara then
+		for _, v in pairs(Chara:GetChildren()) do
+			if v:IsA("Model") or tonumber(v.Name) then
+				if v:GetAttribute("Enabled") ~= true and v:FindFirstChild("Handle") then
+					ToggleItemState:FireServer(v)
+					return true, v
+				end
+			end
+		end
+	end
+	return false, nil
+end
+
+local function EquipItem(SlotNum)
+	RequestItemEquip:FireServer("InvSlot" .. tostring(SlotNum))
+	return true
+end
+
+local function PickupItem(Model)
+	RequestItemPickup:FireServer(Model)
+	return true
+end
+
+local function DropItem(SlotNum)
+	RequestItemDrop:FireServer("InvSlot" .. tostring(SlotNum))
+	return true
+end
+
+local function TpOutside()
+	pcall(function()
+		local map = workspace:FindFirstChild("Map")
+		local rooms = map and map:FindFirstChild("Rooms")
+		local baseCamp = rooms and rooms:FindFirstChild("Base Camp")
+		local pegboard = baseCamp and baseCamp:FindFirstChild("Pegboard")
+		local union = pegboard and pegboard:FindFirstChild("Union")
+		local char = plr.Character or plr.CharacterAdded:Wait()
+		if union and char and char:FindFirstChild("HumanoidRootPart") then
+			char.HumanoidRootPart.CFrame = union.CFrame + Vector3.new(0, 3, 0)
+		end
+	end)
+end
+
+--------------------------------------------------------------
+----------- AUTO SPIRIT BOX DEDICATED ROUTINE ---------------
+--------------------------------------------------------------
+
+local spiritBoxQuestions = {
+	"Are you here?",
+	"Are you friendly?",
+	"Can you speak?",
+	"Are you close?",
+	"Give us a sign",
+	"Where are you?",
+	"How old are you?",
+	"What do you want?",
+	"Should we leave?",
+	"Are you angry?",
+	"Show yourself",
+	"Do you want to hurt us?",
+	"Are you male or female?",
+	"When did you pass away?",
+	"What is your goal?",
+	"Why are you here?",
+	"How long ago did you die?",
+	"Is there a ghost here?"
+}
+
+local function FireSpiritBox()
+	AskSpiritBoxFromUI:FireServer(spiritBoxQuestions[math.random(1, #spiritBoxQuestions)])
+end
+
+task.spawn(function()
+	while not IsUiClosed do
+		task.wait(0.5)
+		if AutoSpiritBoxToggle then
+			local ghost = GetGhostModel()
+			if ghost and ghost:GetAttribute("Hunting") == true then
+				TpOutside()
+			else
+				local char = plr.Character
+				if char and ghost and char:FindFirstChild("HumanoidRootPart") then
+					char.HumanoidRootPart.CFrame = ghost:GetPivot() * CFrame.new(0, 0, 10)
+					
+					local hasItem, slot = CheckInventory("Spirit Box")
+					if not hasItem then
+						local found, itemModel = FindItem("Spirit Box")
+						if found and itemModel then
+							PickupItem(itemModel)
+							task.wait(0.3)
+							ActiveItem()
+							task.wait(0.4)
+							local hasItem2, slot2 = CheckInventory("Spirit Box")
+							if hasItem2 then
+								EquipItem(slot2)
+								task.wait(0.3)
+								FireSpiritBox()
+							end
+						end
+					else
+						EquipItem(slot)
+						ActiveItem()
+						task.wait(0.3)
+						FireSpiritBox()
+					end
+				end
+			end
+		end
+	end
+end)
+
+--------------------------------------------------------------
+----------- DYNAMIC EVIDENCE DETECTION LOGIC -----------------
+--------------------------------------------------------------
+
+local GhostEvidenceMap = {
+	Shadow       = { "EMFLevel5", "GhostWriting", "LaserProjector" },
+	Keres        = { "Wither", "SpiritBox", "Handprints" },
+	Phantom      = { "EMFLevel5", "Handprints", "GhostOrb" },
+	Vesper       = { "Wither", "Handprints", "GhostWriting" },
+	Dullahan     = { "Wither", "LaserProjector", "FreezingTemperatures" },
+	Doppelganger = { "GhostWriting", "SpiritBox", "FreezingTemperatures" },
+	Entity       = { "SpiritBox", "Handprints", "LaserProjector" },
+	Ravager      = { "EMFLevel5", "SpiritBox", "GhostWriting" },
+	Spirit       = { "Handprints", "GhostWriting", "SpiritBox" },
+	Revenant     = { "GhostWriting", "FreezingTemperatures", "EMFLevel5" },
+	Aswang       = { "Wither", "EMFLevel5", "GhostWriting" },
+	Wraith       = { "EMFLevel5", "SpiritBox", "LaserProjector" },
+	Banshee      = { "GhostOrb", "Handprints", "FreezingTemperatures" },
+	Specter      = { "EMFLevel5", "FreezingTemperatures", "LaserProjector" },
+	Demon        = { "EMFLevel5", "Handprints", "FreezingTemperatures" },
+	Wretch       = { "GhostWriting", "GhostOrb", "LaserProjector" },
+	Ghoul        = { "SpiritBox", "FreezingTemperatures", "GhostOrb" },
+	Siren        = { "Wither", "EMFLevel5", "SpiritBox" },
+	Nightmare    = { "EMFLevel5", "SpiritBox", "GhostOrb" },
+	Oni          = { "LaserProjector", "FreezingTemperatures", "SpiritBox" },
+	Wisp         = { "Wither", "GhostOrb", "LaserProjector" },
+	Leviathan    = { "GhostWriting", "GhostOrb", "Handprints" },
+	Dybbuk       = { "Wither", "FreezingTemperatures", "Handprints" },
+	Vex          = { "Wither", "GhostOrb", "FreezingTemperatures" },
+	Umbra        = { "GhostOrb", "Handprints", "LaserProjector" }
+}
+
+local function TrackTemp()
+	local Temp = 100
+	local TempRoom = nil
+	local rooms = GetRoomsFolder()
+	if rooms then
+		for _, room in ipairs(rooms:GetChildren()) do
+			local rTemp = room:GetAttribute("Temperature")
+			if rTemp ~= nil and rTemp < Temp then
+				Temp = rTemp
+				TempRoom = room
+			end
+		end
+	end
+	return Temp, TempRoom
+end
+
+local function CheckWither()
+	local items = workspace:FindFirstChild("Items")
+	if items then
+		for _, obj in ipairs(items:GetDescendants()) do
+			if obj:IsA("BasePart") and obj.Name == "Petals" then
+				if obj.Color == Color3.new(0, 0, 0) or (obj.Color.R < 0.05 and obj.Color.G < 0.05 and obj.Color.B < 0.05) then
+					return true
+				end
+			end
+		end
+	end
+	return false
+end
+
+local function CheckGhostWriting()
+	local items = workspace:FindFirstChild("Items")
+	if items then
+		for _, obj in ipairs(items:GetDescendants()) do
+			if obj:IsA("Decal") then
+				local model = obj:FindFirstAncestorWhichIsA("Model")
+				if model and model:GetAttribute("ItemName") == "Spirit Book" then
+					if obj.Texture ~= "" and obj.Texture ~= nil then
+						return true
+					end
+				end
+			end
+		end
+	end
+	return false
+end
+
+local function CheckHandprints()
+	local hp = workspace:FindFirstChild("Handprints")
+	if hp and #hp:GetChildren() > 0 then
+		return true
+	end
+	for _, obj in ipairs(workspace:GetDescendants()) do
+		if obj:IsA("BasePart") and (
+			obj.Name == "Handprint1" or
+			obj.Name == "Handprint2" or
+			obj.Name == "Footprint" or
+			obj.Name == "Footprint1"
+		) then
+			return true
+		end
+	end
+	return false
+end
+
+local function CheckGhostOrb()
+	for _, obj in ipairs(workspace:GetDescendants()) do
+		if obj:IsA("BasePart") and obj.Name == "GhostOrb" then
+			return true
+		end
+	end
+	return false
+end
+
+local function CheckEMF()
+	local level = 0
+	local ghost = GetGhostModel()
+	if ghost and ghost:GetAttribute("LastEMFLevel5Time") then
+		return 5
+	end
+	for _, obj in ipairs(workspace:GetDescendants()) do
+		if obj:IsA("Folder") and obj.Name == "Indicators" then
+			for _, v in pairs(obj:GetChildren()) do
+				if v:IsA("BasePart") and v.Material == Enum.Material.Neon and tonumber(v.Name) then
+					if tonumber(v.Name) > level then
+						level = tonumber(v.Name)
+					end
+				end
+			end
+		end
+	end
+	return level
+end
+
+local function CheckSpiritBox()
+	local sub = plr.PlayerGui:FindFirstChild("Subtitles")
+	local textLabel = sub and sub.Holder:FindFirstChild("TextLabel")
+	if textLabel then
+		local ghostText = textLabel.Text
+		return #ghostText:gsub("%s+", "") >= 3
+	end
+	return false
+end
+
+local function GetPossibleGhostTypes(detectedList)
+	local matches = {}
+	for ghostName, evidences in pairs(GhostEvidenceMap) do
+		local allMatch = true
+		for _, det in ipairs(detectedList) do
+			if not table.find(evidences, det) then
+				allMatch = false
+				break
+			end
+		end
+		if allMatch then
+			table.insert(matches, ghostName)
+		end
+	end
+	return matches
+end
+
+local function SelectEvidenceInJournal(evidenceName)
+	pcall(function()
+		local journal = plr.PlayerGui:FindFirstChild("Journal")
+		local page4 = journal and journal:FindFirstChild("Holder") and journal.Holder.Pages:FindFirstChild("Page4")
+		if page4 then
+			local evTypes = page4.Left.Page.EvidenceTypes
+			local evFrame = evTypes:FindFirstChild(evidenceName)
+			if evFrame and evFrame:FindFirstChild("Container") and evFrame.Container:FindFirstChild("Detection") then
+				local conn = getconnections and getconnections(evFrame.Container.Detection.MouseButton1Click)[1]
+				if conn and getupvalues then
+					local u1 = getupvalues(conn.Function)[1]
+					if u1 then u1[evidenceName] = true end
+				end
+			end
+		end
+	end)
+
+	pcall(function()
+		if EvidenceMarkedInJournal then
+			EvidenceMarkedInJournal:FireServer(evidenceName)
+		end
+	end)
+
+	pcall(function()
+		local journal = plr.PlayerGui:FindFirstChild("Journal")
+		if journal and journal:FindFirstChild("Holder") and journal.Holder.Pages then
+			for _, pageName in ipairs({"Page1", "Page4"}) do
+				local p = journal.Holder.Pages:FindFirstChild(pageName)
+				if p and p:FindFirstChild("Left") and p.Left:FindFirstChild("Page") then
+					local et = p.Left.Page:FindFirstChild("EvidenceTypes")
+					if et then
+						local evFrame = et:FindFirstChild(evidenceName)
+						if evFrame then
+							local target = evFrame:FindFirstChild("Container") or evFrame
+							if target:FindFirstChild("Highlight") then target.Highlight.Visible = true end
+							if target:FindFirstChild("CrossOut") then target.CrossOut.Visible = false end
+						end
+					end
+				end
+			end
+		end
+	end)
+end
+
+local function SelectGhostInJournal(ghostName)
+	if not ghostName or ghostName == "..." or ghostName:find("/") or ghostName:find("%+") then
+		return false
+	end
+
+	pcall(function()
+		local journal = plr.PlayerGui:FindFirstChild("Journal")
+		local page4 = journal and journal:FindFirstChild("Holder") and journal.Holder.Pages:FindFirstChild("Page4")
+		if page4 then
+			local ghostTypes = page4.Right.Page.GhostTypes
+			local targetFrame = ghostTypes:FindFirstChild(ghostName)
+			if targetFrame and targetFrame:FindFirstChild("Detection") then
+				local conn = getconnections and getconnections(targetFrame.Detection.MouseButton1Click)[1]
+				if conn and getupvalues then
+					local u2 = getupvalues(conn.Function)[1]
+					if u2 then
+						for k in pairs(u2) do u2[k] = nil end
+						u2[ghostName] = true
+					end
+				end
+			end
+
+			for _, g in ipairs(ghostTypes:GetChildren()) do
+				if g:IsA("Frame") then
+					if g.Name == ghostName then
+						if g:FindFirstChild("Highlight") then g.Highlight.Visible = true end
+						if g:FindFirstChild("Strikethrough") then g.Strikethrough.Visible = false end
+					else
+						if g:FindFirstChild("Highlight") and g.Highlight.Visible then
+							g.Highlight.Visible = false
+						end
+					end
+				end
+			end
+		end
+	end)
+
+	pcall(function()
+		if EvidenceMarkedInJournal then
+			EvidenceMarkedInJournal:FireServer(ghostName)
+		end
+	end)
+
+	return true
+end
+
+--------------------------------------------------------------
+----------- REAL-TIME HANDPRINTS & EVIDENCE ESP --------------
+--------------------------------------------------------------
+
+local function RefreshEvidenceESP()
+	if not EvidenceEspToggle then return end
+
+	local function AddPrintESP(obj)
+		if obj:IsA("BasePart") and not obj:FindFirstChild("EvidenceBil") then
+			local bil = Instance.new("BillboardGui", obj)
+			bil.Name = "EvidenceBil"
+			bil.AlwaysOnTop = true
+			bil.Size = UDim2.new(0, 95, 0, 26)
+			bil.Adornee = obj
+
+			local lbl = Instance.new("TextLabel", bil)
+			lbl.BackgroundTransparency = 1
+			lbl.Size = UDim2.new(1, 0, 1, 0)
+			lbl.Font = Enum.Font.GothamBold
+			lbl.Text = obj.Name:find("Foot") and "👣 Footprint" or "🖐 Handprint"
+			lbl.TextColor3 = Color3.fromRGB(80, 255, 140)
+			lbl.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+			lbl.TextStrokeTransparency = 0
+			lbl.TextScaled = true
+
+			local h = Instance.new("Highlight", obj)
+			h.Name = "EvidenceHL"
+			h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+			h.OutlineColor = Color3.fromRGB(80, 255, 140)
+			h.FillTransparency = 1
+			h.Adornee = obj
+
+			table.insert(EvidenceEspObjects, bil)
+			table.insert(EvidenceEspObjects, h)
+		end
+	end
+
+	local hpFolder = workspace:FindFirstChild("Handprints")
+	if hpFolder then
+		for _, obj in ipairs(hpFolder:GetChildren()) do AddPrintESP(obj) end
+	end
+	for _, obj in ipairs(workspace:GetDescendants()) do
+		if obj:IsA("BasePart") and (obj.Name == "Handprint1" or obj.Name == "Handprint2" or obj.Name == "Footprint" or obj.Name == "Footprint1") then
+			AddPrintESP(obj)
+		end
+	end
+
+	for _, obj in ipairs(workspace:GetDescendants()) do
+		if obj:IsA("BasePart") and obj.Name == "GhostOrb" and not obj:FindFirstChild("EvidenceBil") then
+			local bil = Instance.new("BillboardGui", obj)
+			bil.Name = "EvidenceBil"
+			bil.AlwaysOnTop = true
+			bil.Size = UDim2.new(0, 80, 0, 24)
+			bil.Adornee = obj
+
+			local lbl = Instance.new("TextLabel", bil)
+			lbl.BackgroundTransparency = 1
+			lbl.Size = UDim2.new(1, 0, 1, 0)
+			lbl.Font = Enum.Font.GothamBold
+			lbl.Text = "✨ Ghost Orb"
+			lbl.TextColor3 = Color3.fromRGB(240, 245, 255)
+			lbl.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+			lbl.TextStrokeTransparency = 0
+			lbl.TextScaled = true
+
+			local h = Instance.new("Highlight", obj)
+			h.Name = "EvidenceHL"
+			h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+			h.OutlineColor = Color3.fromRGB(240, 245, 255)
+			h.FillTransparency = 1
+			h.Adornee = obj
+
+			table.insert(EvidenceEspObjects, bil)
+			table.insert(EvidenceEspObjects, h)
+		end
+	end
+end
+
+local function ClearEvidenceESP()
+	for _, inst in ipairs(EvidenceEspObjects) do
+		pcall(function() inst:Destroy() end)
+	end
+	table.clear(EvidenceEspObjects)
+	for _, obj in ipairs(workspace:GetDescendants()) do
+		if obj:FindFirstChild("EvidenceBil") then pcall(function() obj.EvidenceBil:Destroy() end) end
+		if obj:FindFirstChild("EvidenceHL") then pcall(function() obj.EvidenceHL:Destroy() end) end
+	end
+end
+
+--------------------------------------------------------------
+----------- MAIN REAL-TIME PERIODIC SCAN LOOP ---------------
+--------------------------------------------------------------
+
+-- Permanent Evidence Latches
+local LowestRecordedTemp = 100
+local HighestEMFLevel = 1
+local CachedWither = false
+local CachedWriting = false
+local CachedPrints = false
+local CachedOrb = false
+local CachedLaser = false
+local CachedSpiritBox = false
+
+local PollInterval = 0.35
+local LastPollTick = tick()
+
+local MainLoopConn = RS.Heartbeat:Connect(function()
+	local now = tick()
+	if now - LastPollTick < PollInterval then return end
+	LastPollTick = now
+
+	local ghost = GetGhostModel()
+
+	ModeText.Text = "Difficulty: " .. tostring(workspace:GetAttribute("Difficulty") or "Unknown")
+	Take3StarsPhoto.Text = "Take 3 stars photo (" .. tostring(workspace:GetAttribute("PhotosTaken") or 0) .. "/6)"
+
+	-- 1. Temperature (Permanent Latch)
+	local currentLowest, tempRoom = TrackTemp()
+	if currentLowest and currentLowest < LowestRecordedTemp then
+		LowestRecordedTemp = currentLowest
+	end
+	local isFreezing = LowestRecordedTemp < 0
+	local tempStr = string.format("Temperature: %.1f°C", LowestRecordedTemp < 100 and LowestRecordedTemp or 0)
+	local tempColor = isFreezing and Color3.fromRGB(85, 215, 130) or Color3.fromRGB(205, 95, 95)
+	Temperature.Text = tempStr
+	Temperature.TextColor3 = tempColor
+	HUD_Temperature.Text = tempStr
+	HUD_Temperature.TextColor3 = tempColor
+
+	-- 2. Wither (Permanent Latch)
+	if not CachedWither and CheckWither() then CachedWither = true end
+	local witherStr = "Wither: " .. (CachedWither and "Yes" or "No")
+	local witherColor = CachedWither and Color3.fromRGB(85, 215, 130) or Color3.fromRGB(205, 95, 95)
+	Wither.Text = witherStr
+	Wither.TextColor3 = witherColor
+	HUD_Wither.Text = witherStr
+	HUD_Wither.TextColor3 = witherColor
+
+	-- 3. Ghost Writing (Permanent Latch)
+	if not CachedWriting and CheckGhostWriting() then CachedWriting = true end
+	local writingStr = "Ghost Writing: " .. (CachedWriting and "Yes" or "No")
+	local writingColor = CachedWriting and Color3.fromRGB(85, 215, 130) or Color3.fromRGB(205, 95, 95)
+	GhostWriting.Text = writingStr
+	GhostWriting.TextColor3 = writingColor
+	HUD_GhostWriting.Text = writingStr
+	HUD_GhostWriting.TextColor3 = writingColor
+
+	-- 4. Handprints (Permanent Latch)
+	if not CachedPrints and CheckHandprints() then CachedPrints = true end
+	local printsStr = "Handprints: " .. (CachedPrints and "Yes" or "No")
+	local printsColor = CachedPrints and Color3.fromRGB(85, 215, 130) or Color3.fromRGB(205, 95, 95)
+	Handprints.Text = printsStr
+	Handprints.TextColor3 = printsColor
+	HUD_Handprints.Text = printsStr
+	HUD_Handprints.TextColor3 = printsColor
+
+	-- 5. Ghost Orb (Permanent Latch)
+	if not CachedOrb and CheckGhostOrb() then CachedOrb = true end
+	local orbStr = "Ghost Orb: " .. (CachedOrb and "Yes" or "No")
+	local orbColor = CachedOrb and Color3.fromRGB(85, 215, 130) or Color3.fromRGB(205, 95, 95)
+	GhostOrb.Text = orbStr
+	GhostOrb.TextColor3 = orbColor
+	HUD_GhostOrb.Text = orbStr
+	HUD_GhostOrb.TextColor3 = orbColor
+
+	-- 6. EMF (Permanent Latch to Highest)
+	local currentEMF = CheckEMF()
+	if currentEMF > HighestEMFLevel then HighestEMFLevel = currentEMF end
+	local isEMF5 = HighestEMFLevel == 5
+	local emfStr = "EMF level: " .. tostring(HighestEMFLevel)
+	local emfColor = isEMF5 and Color3.fromRGB(85, 215, 130) or Color3.fromRGB(205, 95, 95)
+	EMF.Text = emfStr
+	EMF.TextColor3 = emfColor
+	HUD_EMF.Text = emfStr
+	HUD_EMF.TextColor3 = emfColor
+
+	-- 7. Laser Projector (Permanent Latch)
+	if not CachedLaser and ghost and ghost:GetAttribute("InLaser") == true then
+		CachedLaser = true
+	end
+	local laserStr = "Laser Projector: " .. (CachedLaser and "Yes" or "No")
+	local laserColor = CachedLaser and Color3.fromRGB(85, 215, 130) or Color3.fromRGB(205, 95, 95)
+	LaserProjector.Text = laserStr
+	LaserProjector.TextColor3 = laserColor
+	HUD_LaserProjector.Text = laserStr
+	HUD_LaserProjector.TextColor3 = laserColor
+
+	-- 8. Spirit Box (Permanent Latch)
+	if not CachedSpiritBox and CheckSpiritBox() then
+		CachedSpiritBox = true
+	end
+	local spiritStr = "Spirit Box: " .. (CachedSpiritBox and "Yes" or "No")
+	local spiritColor = CachedSpiritBox and Color3.fromRGB(85, 215, 130) or Color3.fromRGB(205, 95, 95)
+	SpiritBox.Text = spiritStr
+	SpiritBox.TextColor3 = spiritColor
+	HUD_SpiritBox.Text = spiritStr
+	HUD_SpiritBox.TextColor3 = spiritColor
+
+	-- Auto Evidence Execution
+	if AutoEvidenceToggle then
+		if CachedPrints then SelectEvidenceInJournal("Handprints") end
+		if CachedOrb then SelectEvidenceInJournal("GhostOrb") end
+		if CachedLaser then SelectEvidenceInJournal("LaserProjector") end
+		if isEMF5 then SelectEvidenceInJournal("EMFLevel5") end
+		if isFreezing then SelectEvidenceInJournal("FreezingTemperatures") end
+		if CachedWither then SelectEvidenceInJournal("Wither") end
+		if CachedSpiritBox then SelectEvidenceInJournal("SpiritBox") end
+		if CachedWriting then SelectEvidenceInJournal("GhostWriting") end
+	end
+
+	-- Ghost Type Resolution
+	local detectedList = {}
+	if CachedPrints then table.insert(detectedList, "Handprints") end
+	if CachedOrb then table.insert(detectedList, "GhostOrb") end
+	if CachedLaser then table.insert(detectedList, "LaserProjector") end
+	if isEMF5 then table.insert(detectedList, "EMFLevel5") end
+	if isFreezing then table.insert(detectedList, "FreezingTemperatures") end
+	if CachedWither then table.insert(detectedList, "Wither") end
+	if CachedSpiritBox then table.insert(detectedList, "SpiritBox") end
+	if CachedWriting then table.insert(detectedList, "GhostWriting") end
+
+	local candidates = GetPossibleGhostTypes(detectedList)
+	local detectedGhostType = ghost and (ghost:GetAttribute("GhostType") or ghost:GetAttribute("Type"))
+	if not detectedGhostType then
+		if #candidates == 1 then
+			detectedGhostType = candidates[1]
+		elseif #candidates > 1 and #detectedList > 0 then
+			if #candidates <= 2 then
+				detectedGhostType = table.concat(candidates, "/")
+			else
+				detectedGhostType = candidates[1] .. " (+" .. tostring(#candidates - 1) .. ")"
+			end
+		else
+			detectedGhostType = "..."
+		end
+	end
+
+	-- Auto Select Ghost Execution
+	if AutoSelectGhostToggle and detectedGhostType and detectedGhostType ~= "..." and not detectedGhostType:find("/") and not detectedGhostType:find("%+") then
+		SelectGhostInJournal(detectedGhostType)
+	end
+
+	-- Header Info (Favorite Room next to Room)
+	local hunting = ghost and ghost:GetAttribute("Hunting") == true
+	local gender = ghost and ghost:GetAttribute("Gender") or "..."
+	local age = ghost and ghost:GetAttribute("Age") or 0
+	local favRoom = ghost and ghost:GetAttribute("FavoriteRoom") or "..."
+	local curRoom = ghost and ghost:GetAttribute("CurrentRoom") or "..."
+	local prefix = hunting and "Ghost(Hunting): " or "Ghost: "
+
+	Ghost.Text = prefix .. gender .. " | Type: " .. detectedGhostType .. " | Age: " .. tostring(age)
+	Ghost.TextColor3 = hunting and Color3.fromRGB(235, 75, 75) or Color3.fromRGB(245, 245, 250)
+	CurrentRoom.Text = "Current room: " .. curRoom .. " | Favorite room: " .. favRoom
+
+	-- HUD Overlay Header
+	HUDGhost.Text = (hunting and "Ghost (Hunting): " or "Ghost: ") .. detectedGhostType
+	HUDGhost.TextColor3 = hunting and Color3.fromRGB(235, 75, 75) or Color3.fromRGB(240, 240, 245)
+	HUDRoom.Text = "Room: " .. curRoom .. " | Fav: " .. favRoom
+
+	-- Hunt Escape Safety (1-Time Teleport per Hunt)
+	if hunting then
+		if IsEscapeHunt and not HasEscapedCurrentHunt then
+			HasEscapedCurrentHunt = true
+			TpOutside()
+		end
+	else
+		HasEscapedCurrentHunt = false
+	end
+
+	-- Real-time Evidence ESP Refresh
+	if EvidenceEspToggle then
+		RefreshEvidenceESP()
+	end
+
+	-- Player Energy Sync
+	local energyEntries = {}
+	for _, p in pairs(PS:GetPlayers()) do
+		if p:GetAttribute("Energy") ~= nil then
+			local energy = tostring(math.floor(p:GetAttribute("Energy")))
+			local name = p.Name == p.DisplayName and p.Name or p.Name .. " (" .. p.DisplayName .. ")"
+			table.insert(energyEntries, name .. ": " .. energy .. "%")
+		end
+	end
+	EnergyText.Text = #energyEntries > 0 and ("Player energy: " .. table.concat(energyEntries, "  |  ")) or "Player energy: N/A"
+
+	-- Player ESP Sync
+	if PlayersEspToggle then
+		for _, p in pairs(PS:GetPlayers()) do
+			if p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+				local HRP = p.Character.HumanoidRootPart
+				local Bil = HRP:FindFirstChild("HubPlrBil")
+				local H = HRP:FindFirstChild("HubPlrEsp")
+
+				if not Bil then
+					Bil = Instance.new("BillboardGui", HRP)
+					Bil.Name = "HubPlrBil"
+					Bil.AlwaysOnTop = true
+					Bil.Size = UDim2.new(0, 100, 0, 36)
+					Bil.Adornee = HRP
+
+					local lbl = Instance.new("TextLabel", Bil)
+					lbl.BackgroundTransparency = 1
+					lbl.Size = UDim2.new(1, 0, 1, 0)
+					lbl.Font = Enum.Font.GothamBold
+					lbl.TextColor3 = Color3.fromRGB(120, 190, 240)
+					lbl.TextStrokeColor3 = Color3.fromRGB(15, 15, 20)
+					lbl.TextStrokeTransparency = 0.3
+					lbl.TextScaled = true
+					lbl.Text = p.DisplayName
+
+					H = Instance.new("Highlight", HRP)
+					H.Name = "HubPlrEsp"
+					H.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+					H.OutlineColor = Color3.fromRGB(120, 190, 240)
+					H.FillTransparency = 1
+					H.Adornee = p.Character
+				end
+			end
+		end
+	end
+end)
+
+--------------------------------------------------------------
+-------------------- BUTTON INTERACTIONS ---------------------
+--------------------------------------------------------------
+
+local function ToggleButtonVisual(btn, active)
+	btn.BackgroundColor3 = active and Color3.fromRGB(32, 95, 65) or Color3.fromRGB(26, 31, 44)
+	btn.BackgroundTransparency = active and 0.05 or 0.1
+	btn.TextColor3 = active and Color3.fromRGB(245, 255, 250) or Color3.fromRGB(235, 240, 250)
+	local stroke = btn:FindFirstChildOfClass("UIStroke")
+	if stroke then
+		stroke.Color = active and Color3.fromRGB(50, 140, 95) or Color3.fromRGB(52, 62, 85)
+	end
+end
+
+GhostEsp.MouseButton1Click:Connect(function()
+	local ghost = GetGhostModel()
+	if not BillboardGui.Parent then
+		BillboardGui.Parent = CoreGui
+		BillboardGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+		BillboardGui.AlwaysOnTop = true
+		BillboardGui.Size = UDim2.new(0, 70, 0, 70)
+		BillboardGui.Adornee = ghost
+
+		GhostBillboardTextLabel.Parent = BillboardGui
+		GhostBillboardTextLabel.BackgroundTransparency = 1
+		GhostBillboardTextLabel.Size = UDim2.new(1, 0, 1, 0)
+		GhostBillboardTextLabel.Font = Enum.Font.GothamBold
+		GhostBillboardTextLabel.Text = "Ghost"
+		GhostBillboardTextLabel.TextColor3 = Color3.fromRGB(225, 65, 65)
+		GhostBillboardTextLabel.TextStrokeColor3 = Color3.fromRGB(15, 15, 20)
+		GhostBillboardTextLabel.TextStrokeTransparency = 0.3
+		GhostBillboardTextLabel.TextScaled = true
+
+		if ghost then
+			HL.Parent = ghost
+			HL.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+			HL.OutlineColor = Color3.fromRGB(225, 65, 65)
+			HL.FillTransparency = 1
+			HL.OutlineTransparency = 0
+			HL.Adornee = ghost
+		end
+		BillboardGui.Enabled = true
+		HL.Enabled = true
+	else
+		BillboardGui.Enabled = not BillboardGui.Enabled
+		HL.Enabled = not HL.Enabled
+	end
+	ToggleButtonVisual(GhostEsp, BillboardGui.Enabled)
+end)
+
+EscapeHunt.MouseButton1Click:Connect(function()
+	IsEscapeHunt = not IsEscapeHunt
+	ToggleButtonVisual(EscapeHunt, IsEscapeHunt)
+	local ghost = GetGhostModel()
+	if IsEscapeHunt and ghost and ghost:GetAttribute("Hunting") and not HasEscapedCurrentHunt then
+		HasEscapedCurrentHunt = true
+		TpOutside()
+	end
+end)
+
+TurnOnFuse.MouseButton1Click:Connect(function()
+	ToggleFuseBox:FireServer()
+end)
+
+AutoSpiritBox.MouseButton1Click:Connect(function()
+	AutoSpiritBoxToggle = not AutoSpiritBoxToggle
+	ToggleButtonVisual(AutoSpiritBox, AutoSpiritBoxToggle)
+	if not AutoSpiritBoxToggle then
+		task.wait(0.2)
+		TpOutside()
+	end
+end)
+
+local placeDb = false
+PlaceStuff.MouseButton1Click:Connect(function()
+	local ghost = GetGhostModel()
+	if placeDb or (ghost and ghost:GetAttribute("Hunting") == true) then return end
+	placeDb = true
+
+	local char = plr.Character
+	if char and ghost then char:PivotTo(ghost:GetPivot()) end
+
+	task.wait(0.1) RequestItemEquip:FireServer("InvSlot1") task.wait(0.1) RequestItemDrop:FireServer("InvSlot1")
+	RequestItemEquip:FireServer("InvSlot1") task.wait(0.1) RequestItemDrop:FireServer("InvSlot1")
+	RequestItemEquip:FireServer("InvSlot1") task.wait(0.1) RequestItemDrop:FireServer("InvSlot1") task.wait(0.2)
+
+	local function GrabAndDrop(itemName)
+		for _, v in pairs(workspace.Items:GetChildren()) do
+			if v:IsA("Model") and v:GetAttribute("ItemName") == itemName then
+				RequestItemPickup:FireServer(v)
+				task.wait(0.3)
+				RequestItemEquip:FireServer("InvSlot1")
+				task.wait(0.3)
+				ToggleItemState:FireServer(v)
+				task.wait(0.3)
+				RequestItemDrop:FireServer("InvSlot1")
+				task.wait(0.3)
+				break
+			end
+		end
+	end
+
+	GrabAndDrop("Cross")
+	GrabAndDrop("Cross")
+	GrabAndDrop("Flower Pot")
+	GrabAndDrop("Laser Projector")
+	GrabAndDrop("EMF Reader")
+	GrabAndDrop("Spirit Book")
+
+	TpOutside()
+	placeDb = false
+end)
+
+TakeAPhoto.MouseButton1Click:Connect(function()
+	local ghost = GetGhostModel()
+	local hasCam, slot = CheckInventory("Photo Camera")
+	if not hasCam then
+		local found, model = FindItem("Photo Camera")
+		if found and model then
+			PickupItem(model)
+			task.wait(0.4)
+			local hasCam2, slot2 = CheckInventory("Photo Camera")
+			if hasCam2 then EquipItem(slot2) end
+		end
+	else
+		EquipItem(slot)
+	end
+	task.wait(0.3)
+	if ghost then
+		TakePhotoEvent:FireServer(workspace.CurrentCamera.CFrame, { Stars = 3, Type = "Ghost", Object = ghost, Reward = 24 })
+	end
+end)
+
+ToggleLights.MouseButton1Click:Connect(function()
+	LightToggleStatus = not LightToggleStatus
+	ToggleButtonVisual(ToggleLights, LightToggleStatus)
+	local rooms = GetRoomsFolder()
+	if rooms then
+		for _, room in pairs(rooms:GetChildren()) do
+			if room:GetAttribute("LightsOn") ~= LightToggleStatus then
+				UseLightSwitch:FireServer(room)
+			end
+		end
+	end
+end)
+
+FullBright.MouseButton1Click:Connect(function()
+	local active = Lighting.Brightness == 3
+	if not active then
+		Lighting.Ambient = Color3.new(1, 1, 1)
+		Lighting.OutdoorAmbient = Color3.new(1, 1, 1)
+		Lighting.Brightness = 3
+		Lighting.GlobalShadows = false
+		Lighting.FogEnd = 100000
+		ToggleButtonVisual(FullBright, true)
+	else
+		Lighting.Ambient = OldLightingList.Ambient
+		Lighting.OutdoorAmbient = OldLightingList.OutdoorAmbient
+		Lighting.Brightness = OldLightingList.Brightness
+		Lighting.GlobalShadows = OldLightingList.GlobalShadows
+		Lighting.FogEnd = OldLightingList.FogEnd
+		ToggleButtonVisual(FullBright, false)
+	end
+end)
+
+ItemEsp.MouseButton1Click:Connect(function()
+	local active = #ItemEspList > 0
+	if not active then
+		for _, v in pairs(workspace:GetDescendants()) do
+			if v:IsA("Model") and v:GetAttribute("ItemName") ~= nil then
+				local Bil = Instance.new("BillboardGui", v)
+				local Lbl = Instance.new("TextLabel", Bil)
+				local H = Instance.new("Highlight", v)
+				table.insert(ItemEspList, Bil)
+				table.insert(ItemEspList, H)
+
+				Bil.AlwaysOnTop = true
+				Bil.Size = UDim2.new(0, 90, 0, 28)
+				Bil.Adornee = v
+
+				Lbl.BackgroundTransparency = 1
+				Lbl.Size = UDim2.new(1, 0, 1, 0)
+				Lbl.Font = Enum.Font.GothamBold
+				Lbl.Text = v:GetAttribute("ItemName")
+				Lbl.TextColor3 = Color3.fromRGB(235, 195, 75)
+				Lbl.TextStrokeColor3 = Color3.fromRGB(15, 15, 20)
+				Lbl.TextStrokeTransparency = 0.3
+				Lbl.TextScaled = true
+
+				H.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+				H.OutlineColor = Color3.fromRGB(235, 160, 40)
+				H.FillTransparency = 1
+				H.Adornee = v
+			end
+		end
+		ToggleButtonVisual(ItemEsp, true)
+	else
+		for _, v in pairs(ItemEspList) do v:Destroy() end
+		table.clear(ItemEspList)
+		ToggleButtonVisual(ItemEsp, false)
+	end
+end)
+
+PlayersEsp.MouseButton1Click:Connect(function()
+	PlayersEspToggle = not PlayersEspToggle
+	ToggleButtonVisual(PlayersEsp, PlayersEspToggle)
+	if not PlayersEspToggle then
+		for _, p in pairs(PS:GetPlayers()) do
+			if p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+				local HRP = p.Character.HumanoidRootPart
+				local Bil = HRP:FindFirstChild("HubPlrBil")
+				local H = HRP:FindFirstChild("HubPlrEsp")
+				if Bil then Bil:Destroy() end
+				if H then H:Destroy() end
+			end
+		end
+	end
+end)
+
+EvidenceEsp.MouseButton1Click:Connect(function()
+	EvidenceEspToggle = not EvidenceEspToggle
+	ToggleButtonVisual(EvidenceEsp, EvidenceEspToggle)
+	if EvidenceEspToggle then
+		RefreshEvidenceESP()
+	else
+		ClearEvidenceESP()
+	end
+end)
+
+AutoEvidence.MouseButton1Click:Connect(function()
+	AutoEvidenceToggle = not AutoEvidenceToggle
+	ToggleButtonVisual(AutoEvidence, AutoEvidenceToggle)
+end)
+
+AutoSelectGhost.MouseButton1Click:Connect(function()
+	AutoSelectGhostToggle = not AutoSelectGhostToggle
+	ToggleButtonVisual(AutoSelectGhost, AutoSelectGhostToggle)
+end)
+
+Take3StarsPhoto.MouseButton1Click:Connect(function()
+	local hasCam, slot = CheckInventory("Photo Camera")
+	if not hasCam then
+		local found, model = FindItem("Photo Camera")
+		if found and model then
+			PickupItem(model)
+			task.wait(0.4)
+			local hasCam2, slot2 = CheckInventory("Photo Camera")
+			if hasCam2 then EquipItem(slot2) end
+		end
+	else
+		EquipItem(slot)
+	end
+	task.wait(0.3)
+
+	local Item, ItemType
+	for _, v in pairs(workspace.Items:GetChildren()) do
+		if v:GetAttribute("DisplayName") == "Burnt Cross" and not v:GetAttribute("PhotoTaken") then
+			v:SetAttribute("PhotoTaken", true)
+			Item = v
+			ItemType = "BurntCross"
+			if plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
+				plr.Character.HumanoidRootPart.CFrame = v:GetPivot() * CFrame.new(0, 1, 0)
+			end
+			break
+		end
+	end
+
+	if not Item then
+		for _, v in pairs(workspace.Interactables:GetChildren()) do
+			if v:GetAttribute("PhotoRewardAvailable") == true and not v:GetAttribute("PhotoTaken") then
+				v:SetAttribute("PhotoTaken", true)
+				Item = v
+				ItemType = "Interaction"
+				if plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
+					plr.Character.HumanoidRootPart.CFrame = v:GetPivot() * CFrame.new(0, 1, 0)
+				end
+				break
+			end
+		end
+	end
+
+	if Item then
+		task.wait(0.2)
+		TakePhotoEvent:FireServer(workspace.CurrentCamera.CFrame, {
+			Stars = 3,
+			Type = ItemType,
+			Object = Item,
+			Reward = (ItemType == "BurntCross" and 12 or 8)
+		})
+		task.wait(0.5)
+		TpOutside()
+	end
+end)
+
+-- Noclip Handler
+local function SetNoclip(state)
+	NoclipToggle = state
+	ToggleButtonVisual(NoclipBtn, NoclipToggle)
+	if NoclipToggle then
+		if not NoclipConn then
+			NoclipConn = RS.Stepped:Connect(function()
+				if NoclipToggle and plr.Character then
+					for _, part in ipairs(plr.Character:GetDescendants()) do
+						if part:IsA("BasePart") and part.CanCollide then
+							part.CanCollide = false
+						end
+					end
+				end
+			end)
+		end
+	else
+		if NoclipConn then
+			NoclipConn:Disconnect()
+			NoclipConn = nil
+		end
+		if plr.Character then
+			for _, part in ipairs(plr.Character:GetDescendants()) do
+				if part:IsA("BasePart") and (part.Name == "HumanoidRootPart" or part.Name == "Torso" or part.Name == "UpperTorso" or part.Name == "LowerTorso") then
+					part.CanCollide = true
+				end
+			end
+		end
+	end
+end
+
+NoclipBtn.MouseButton1Click:Connect(function()
+	SetNoclip(not NoclipToggle)
+end)
+
+-- Minimize & Close
+local isMinimized = false
+Minimize.MouseButton1Click:Connect(function()
+	isMinimized = not isMinimized
+	Content.Visible = not isMinimized
+	MainFrame.Size = isMinimized and UDim2.new(0, 520, 0, 36) or UDim2.new(0, 520, 0, 460)
+end)
+
+Close.MouseButton1Click:Connect(function()
+	IsUiClosed = true
+	PlayersEspToggle = false
+	EvidenceEspToggle = false
+	AutoEvidenceToggle = false
+	AutoSelectGhostToggle = false
+	AutoSpiritBoxToggle = false
+	SetNoclip(false)
+
+	if MainLoopConn then MainLoopConn:Disconnect() end
+	if KeybindConn then KeybindConn:Disconnect() end
+
+	ClearEvidenceESP()
+	for _, v in pairs(ItemEspList) do pcall(function() v:Destroy() end) end
+	if BillboardGui then BillboardGui:Destroy() end
+	if HL then HL:Destroy() end
+
+	Lighting.Ambient       = OldLightingList.Ambient
+	Lighting.OutdoorAmbient = OldLightingList.OutdoorAmbient
+	Lighting.Brightness    = OldLightingList.Brightness
+	Lighting.GlobalShadows = OldLightingList.GlobalShadows
+	Lighting.FogEnd        = OldLightingList.FogEnd
+
+	DemonologyPRO:Destroy()
+	getgenv()["DemonologyUI"] = nil
+end)
+
+-- Auto start game (open main exit door after 30s)
+task.spawn(function()
+	task.wait(30)
+	for _, v in pairs(workspace:GetDescendants()) do
+		if v:IsA("Model") and v.Name == "ExitDoor" and v:GetAttribute("DoorClosed") ~= false then
+			ClientChangeDoor:FireServer(v:WaitForChild("Door"))
+			break
+		end
+	end
+end)
