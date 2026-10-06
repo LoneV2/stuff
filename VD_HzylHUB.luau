@@ -43,14 +43,17 @@ end
 
 local Workspace = game:GetService("Workspace")
 local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
 local VirtualInputManager = game:GetService("VirtualInputManager")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Lighting = game:GetService("Lighting")
 local Players = game:GetService("Players")
-local localPlayer = Players.LocalPlayer or Players.PlayerAdded:Wait()
+
+local localPlayer = Players.LocalPlayer
+if not localPlayer then
+    Players:GetPropertyChangedSignal("LocalPlayer"):Wait()
+    localPlayer = Players.LocalPlayer
+end
+
 local PlayerGui = localPlayer:WaitForChild("PlayerGui")
-local Camera = workspace.CurrentCamera or workspace:FindFirstChildOfClass("Camera")
 
 local genRemotes = ReplicatedStorage:FindFirstChild("Remotes") and ReplicatedStorage.Remotes:FindFirstChild("Generator")
 local skillResultRemote = genRemotes and genRemotes:FindFirstChild("SkillCheckResultEvent")
@@ -60,11 +63,31 @@ local repairAnimRemote = genRemotes and genRemotes:FindFirstChild("RepairAnim")
 local escapeTimeRemote = genRemotes and genRemotes:FindFirstChild("Escapetime")
 local leverAnimRemote = ReplicatedStorage:FindFirstChild("Remotes") and ReplicatedStorage.Remotes:FindFirstChild("Exit") and ReplicatedStorage.Remotes.Exit:FindFirstChild("LeverAnim")
 
+local function getExecutorName()
+    local name = nil
+    pcall(function()
+        if identifyexecutor then
+            name = identifyexecutor()
+        elseif getexecutorname then
+            name = getexecutorname()
+        end
+    end)
+    if name and typeof(name) == "string" and name ~= "" then
+        return name
+    end
+    if getgenv().potassium or getgenv().Potassium or getgenv().POTASSIUM_LOADED then return "Potassium" end
+    if getgenv().solara or getgenv().Solara or getgenv().SOLARA_LOADED then return "Solara" end
+    if getgenv().delta or getgenv().Delta then return "Delta" end
+    if getgenv().wave or getgenv().Wave or getgenv().WAVE_LOADED then return "Wave" end
+    if getgenv().syn then return "Synapse" end
+    return "Universal"
+end
+
 pcall(function()
     game:GetService("StarterGui"):SetCore("SendNotification", {
         Title = "HzylHUB",
-        Text = "Loaded",
-        Duration = 2
+        Text = "Loaded (" .. getExecutorName() .. ")",
+        Duration = 3
     })
 end)
 
@@ -73,7 +96,6 @@ local Settings = {
     GenHighlightEnabled = true,
     GenBillboardEnabled = true,
     GenNormalColor = Color3.fromRGB(255, 140, 0),
-    GenPerkColor = Color3.fromRGB(255, 230, 0),
     GenCompleteColor = Color3.fromRGB(46, 204, 113),
 
     ExitLeverESP = true,
@@ -224,7 +246,8 @@ local function checkPerkEquipped()
         end
     end
 
-    if workspace:FindFirstChild(localPlayer.Name) and workspace[localPlayer.Name]:FindFirstChild("perfectionist") then
+    local playerCharInWorkspace = Workspace:FindFirstChild(localPlayer.Name)
+    if playerCharInWorkspace and playerCharInWorkspace:FindFirstChild("perfectionist") then
         return true
     end
 
@@ -287,6 +310,36 @@ end
 
 -- Skill Check
 local boundPrompts = {}
+local TouchID = 8822
+local ActionPath = "Survivor-mob.Controls.action.check"
+local GuiService = game:GetService("GuiService")
+
+local function GetActionTarget()
+    local current = PlayerGui
+    for segment in string.gmatch(ActionPath, "[^%.]+") do 
+        current = current and current:FindFirstChild(segment) 
+    end
+    return current
+end
+
+local function TriggerMobileButton()
+    local b = GetActionTarget()
+    if b and b:IsA("GuiObject") then
+        local p, s, i = b.AbsolutePosition, b.AbsoluteSize, GuiService:GetGuiInset()
+        local cx, cy = p.X + (s.X/2) + i.X, p.Y + (s.Y/2) + i.Y
+        pcall(function() 
+            VirtualInputManager:SendTouchEvent(TouchID, 0, cx, cy) 
+            task.wait(0.002) 
+            VirtualInputManager:SendTouchEvent(TouchID, 2, cx, cy) 
+        end)
+    else
+        pcall(function()
+            VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Space, false, game)
+            task.wait(0.002)
+            VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Space, false, game)
+        end)
+    end
+end
 
 local function isKingScourgeActive()
     local now = os.clock()
@@ -323,6 +376,29 @@ local function isKingScourgeActive()
     return false
 end
 
+local function getNearestGeneratorProgress()
+    local char = localPlayer.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    if not root then return 0 end
+    
+    local nearestProg = 0
+    local closestDist = 15
+    
+    for gen, _ in pairs(activeGenerators) do
+        if gen and gen.Parent then
+            local part = gen.PrimaryPart or gen:FindFirstChild("RootPart") or gen:FindFirstChild("HitBox") or gen:FindFirstChildWhichIsA("BasePart")
+            if part then
+                local dist = (part.Position - root.Position).Magnitude
+                if dist <= closestDist then
+                    closestDist = dist
+                    nearestProg = getProgressPercentage(gen)
+                end
+            end
+        end
+    end
+    return nearestProg
+end
+
 local function setupSkillCheckGui(promptGui)
     if not promptGui or boundPrompts[promptGui] then return end
     boundPrompts[promptGui] = true
@@ -336,74 +412,60 @@ local function setupSkillCheckGui(promptGui)
 
         local handledThisPrompt = false
 
-        local function resetPromptState()
-            handledThisPrompt = false
-        end
-
-        local function sendServerSkillSuccess()
-            local genRemotesNow = ReplicatedStorage:FindFirstChild("Remotes") and ReplicatedStorage.Remotes:FindFirstChild("Generator")
-            local currentSkillRemote = genRemotesNow and genRemotesNow:FindFirstChild("SkillCheckResultEvent") or skillResultRemote
-            if currentSkillRemote then
-                pcall(function()
-                    currentSkillRemote:FireServer("success", 1)
-                end)
-            end
-        end
-
-        local processInstantCheck = function()
+        local function safeProcess()
+            -- Verify the UI is actually visible and the feature is enabled
             if not (check.Visible and promptGui.Enabled and Settings.AutoSkillCheck) then
                 handledThisPrompt = false
                 return
             end
 
+            -- Prevent spam-firing on the same prompt instance
             if handledThisPrompt then return end
 
-            if isKingScourgeActive() then
+            local progress = getNearestGeneratorProgress()
+            local isKing = isKingScourgeActive()
+            local modeOffset = (Settings.SkillCheckMode == "great") and 5 or 12
+            local normalOffset = (Settings.SkillCheckMode == "great") and 109 or 130
+            local currentOffset = isKing and modeOffset or normalOffset
+
+            if progress < 89 then
+                -- INSTANT SNAP: Force the needle to the perfect rotation immediately (Bypasses travel time)
+                handledThisPrompt = true
+                line.Rotation = goal.Rotation + currentOffset
+                
+                task.spawn(function()
+                    TriggerMobileButton()
+                    task.wait(0.15)
+                    handledThisPrompt = false
+                end)
+            else
+                -- NATURAL TIMING: Wait for the needle to reach the perfect zone naturally (King Scourge method)
                 local lineRot = line.AbsoluteRotation % 360
                 local goalRot = goal.AbsoluteRotation % 360
-                local targetAngle = (goalRot + (Settings.SkillCheckMode == "great" and 5 or 12)) % 360
+                local targetAngle = (goalRot + currentOffset) % 360
                 local diff = math.abs((lineRot - targetAngle + 180) % 360 - 180)
 
                 if diff <= 28 then
                     handledThisPrompt = true
-                    line.Rotation = (goal.Rotation + ((Settings.SkillCheckMode == "great") and 5 or 12))
-                    VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Space, false, game)
-                    task.wait(0.025)
-                    VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Space, false, game)
-                    sendServerSkillSuccess()
-                    task.delay(0.2, resetPromptState)
+                    line.Rotation = goal.Rotation + currentOffset -- Visual snap on hit
+                    
+                    task.spawn(function()
+                        TriggerMobileButton()
+                        task.wait(0.05)
+                        handledThisPrompt = false
+                    end)
                 end
-            else
-                handledThisPrompt = true
-                local offset = (Settings.SkillCheckMode == "great") and 109 or 130
-                line.Rotation = (goal.Rotation + offset)
-                VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Space, false, game)
-                task.wait(0.025)
-                VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Space, false, game)
-                sendServerSkillSuccess()
-                task.delay(0.2, resetPromptState)
             end
         end
 
-        local c1 = promptGui:GetPropertyChangedSignal("Enabled"):Connect(function()
-            resetPromptState()
-            processInstantCheck()
-        end)
-
-        local c2 = check:GetPropertyChangedSignal("Visible"):Connect(function()
-            resetPromptState()
-            processInstantCheck()
-        end)
-
+        -- Listeners: Trigger instantly or update on rotation
+        local c1 = promptGui:GetPropertyChangedSignal("Enabled"):Connect(safeProcess)
+        local c2 = check:GetPropertyChangedSignal("Visible"):Connect(safeProcess)
         local c3 = goal:GetPropertyChangedSignal("Rotation"):Connect(function()
-            resetPromptState()
-            processInstantCheck()
+            handledThisPrompt = false
+            safeProcess()
         end)
-
-        local c4 = check:GetPropertyChangedSignal("Rotation"):Connect(function()
-            resetPromptState()
-            processInstantCheck()
-        end)
+        local c4 = check:GetPropertyChangedSignal("Rotation"):Connect(safeProcess)
 
         local renderConn
         renderConn = RunService.RenderStepped:Connect(function()
@@ -412,7 +474,7 @@ local function setupSkillCheckGui(promptGui)
                 boundPrompts[promptGui] = nil
                 return
             end
-            processInstantCheck()
+            safeProcess()
         end)
 
         table.insert(Connections, c1)
@@ -421,7 +483,8 @@ local function setupSkillCheckGui(promptGui)
         table.insert(Connections, c4)
         table.insert(Connections, renderConn)
 
-        processInstantCheck()
+        -- Run once immediately in case the prompt was already visible when hooked
+        safeProcess()
     end)
 end
 
@@ -460,6 +523,27 @@ local function isKiller(player)
     return isK
 end
 
+local CustomKillerNames = {
+    ["killer"] = "Jeff",
+    ["stalker"] = "Myers",
+    ["slasher"] = "Jason",
+    ["masked"] = "Hotline Miami"
+}
+
+local function formatKillerName(rawType)
+    if not rawType or rawType == "" then
+        return "Jeff"
+    end
+    local str = tostring(rawType)
+    local lower = str:lower()
+    for key, mapped in pairs(CustomKillerNames) do
+        if lower == key or lower:find(key, 1, true) then
+            return mapped
+        end
+    end
+    return str
+end
+
 local function getKillerInfo()
     for _, p in ipairs(Players:GetPlayers()) do
         if isKiller(p) then
@@ -470,7 +554,8 @@ local function getKillerInfo()
             if not killerType or killerType == "" then
                 killerType = "Killer"
             end
-            return p.DisplayName .. "(" .. p.Name .. ") [" .. tostring(killerType) .. "]"
+            local mappedName = formatKillerName(killerType)
+            return p.DisplayName .. " (@" .. p.Name .. ") " .. mappedName
         end
     end
     return "None"
@@ -516,13 +601,13 @@ local killerLabel = Instance.new("TextLabel")
 killerLabel.Name = "KillerLabel"
 killerLabel.AnchorPoint = Vector2.new(1, 1)
 killerLabel.Position = UDim2.new(1, -15, 1, -15)
-killerLabel.Size = UDim2.new(0, 450, 0, 24)
+killerLabel.Size = UDim2.new(0, 520, 0, 28)
 killerLabel.BackgroundTransparency = 1
 killerLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 killerLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
 killerLabel.TextStrokeTransparency = 0
 killerLabel.Font = Enum.Font.FredokaOne
-killerLabel.TextSize = 14
+killerLabel.TextSize = 16
 killerLabel.RichText = true
 killerLabel.TextXAlignment = Enum.TextXAlignment.Right
 killerLabel.TextYAlignment = Enum.TextYAlignment.Bottom
@@ -532,9 +617,9 @@ local function updateKillerLabel()
     if killerLabel and killerLabel.Parent then
         local kInfo = getKillerInfo()
         if kInfo == "None" then
-            killerLabel.Text = 'Killer: <font color="rgb(180, 180, 180)">None</font>'
+            killerLabel.Text = 'Killer:  <font color="rgb(190, 190, 190)">None</font>'
         else
-            killerLabel.Text = 'Killer: <font color="rgb(255, 75, 75)">' .. kInfo .. '</font>'
+            killerLabel.Text = 'Killer:  <font color="rgb(255, 110, 110)">' .. kInfo .. '</font>'
         end
     end
 end
@@ -598,14 +683,14 @@ local function isZombieAwake(zombie)
         end
     end
 
-    if hrp then
+    if hrp and hrp:IsA("BasePart") then
         if hrp.CFrame.UpVector.Y < 0.5 then
             return false
         end
     end
 
     local name = zombie.Name:lower()
-    if (name:find("corpse") or name:find("patient")) and (not hrp or hrp.CFrame.UpVector.Y < 0.6) then
+    if (name:find("corpse") or name:find("patient")) and (not hrp or (hrp:IsA("BasePart") and hrp.CFrame.UpVector.Y < 0.6)) then
         return false
     end
 
@@ -908,7 +993,7 @@ local function setupGenerator(generator)
                 highlight.FillTransparency = 0.4
             else
                 local kickCount = generator:GetAttribute("kickcount") or generator:GetAttribute("KickCount") or 0
-                local activeColor = cachedPerkEquipped and Settings.GenPerkColor or Settings.GenNormalColor
+                local activeColor = Settings.GenNormalColor
 
                 bb.Enabled = Settings.GenESP and Settings.GenBillboardEnabled
                 label.Text = pct .. "% <font size=\"10\">[K: " .. kickCount .. "]</font>"
