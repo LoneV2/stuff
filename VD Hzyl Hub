@@ -46,6 +46,10 @@ local RunService = game:GetService("RunService")
 local VirtualInputManager = game:GetService("VirtualInputManager")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
+local GuiService = game:GetService("GuiService")
+local UserInputService = game:GetService("UserInputService")
+
+local isMobile = UserInputService.TouchEnabled
 
 local localPlayer = Players.LocalPlayer
 if not localPlayer then
@@ -60,7 +64,7 @@ local skillResultRemote = genRemotes and genRemotes:FindFirstChild("SkillCheckRe
 local perkRemotes = ReplicatedStorage:FindFirstChild("Remotes") and ReplicatedStorage.Remotes:FindFirstChild("Perks")
 local perfRemote = perkRemotes and perkRemotes:FindFirstChild("perfectionistplanning")
 local repairAnimRemote = genRemotes and genRemotes:FindFirstChild("RepairAnim")
-local escapeTimeRemote = genRemotes and genRemotes:FindFirstChild("Escapetime")
+local escapeTimeRemote = ReplicatedStorage:FindFirstChild("Remotes") and ReplicatedStorage.Remotes:FindFirstChild("Escapetime")
 local leverAnimRemote = ReplicatedStorage:FindFirstChild("Remotes") and ReplicatedStorage.Remotes:FindFirstChild("Exit") and ReplicatedStorage.Remotes.Exit:FindFirstChild("LeverAnim")
 
 local function getExecutorName()
@@ -308,11 +312,10 @@ if repairAnimRemote then
     table.insert(Connections, cRep)
 end
 
--- Skill Check
-local boundPrompts = {}
+-- Skill Check Setup (Exact copy of Yuji's Mobile Script, Original PC Snap for PC)
 local TouchID = 8822
 local ActionPath = "Survivor-mob.Controls.action.check"
-local GuiService = game:GetService("GuiService")
+local isProcessingHit = false
 
 local function GetActionTarget()
     local current = PlayerGui
@@ -341,151 +344,214 @@ local function TriggerMobileButton()
     end
 end
 
-local function isKingScourgeActive()
-    local now = os.clock()
-    if cachedKingScourge ~= nil and (now - lastKingCheck < 3) then
-        return cachedKingScourge
-    end
-    lastKingCheck = now
+if isMobile then
+    -- MOBILE: Exact copy of Yuji's script logic
+    local mobileLoop = RunService.Heartbeat:Connect(function()
+        if not Settings.AutoSkillCheck then return end
+        
+        local team = localPlayer.Team
+        local teamName = team and team.Name:lower() or ""
+        if teamName:find("spectator") or teamName:find("lobby") then return end
 
-    for _, p in ipairs(Players:GetPlayers()) do
-        local sel = tostring(p:GetAttribute("SelectedKiller") or ""):lower()
-        local role = tostring(p:GetAttribute("Role") or ""):lower()
-        if sel:find("scourge") or sel:find("king") or role:find("scourge") or role:find("king") then
-            cachedKingScourge = true
-            return true
+        local prompt = PlayerGui:FindFirstChild("SkillCheckPromptGui")
+        if prompt then
+            local check = prompt:FindFirstChild("Check")
+            if not check or not check.Visible then
+                isProcessingHit = false
+            else
+                local line = check:FindFirstChild("Line")
+                local goal = check:FindFirstChild("Goal")
+                
+                if line and goal then
+                    local lr = line.Rotation % 360
+                    local gr = goal.Rotation % 360
+
+                    local startOffset = 102 
+                    local endOffset = 116   
+
+                    local ss = (gr + startOffset) % 360
+                    local se = (gr + endOffset) % 360 
+                    
+                    local isInZone = (ss > se and (lr >= ss or lr <= se)) or (lr >= ss and lr <= se)
+
+                    if not isInZone and isProcessingHit then
+                        isProcessingHit = false
+                    end
+
+                    if not isProcessingHit and isInZone then
+                        isProcessingHit = true
+                        TriggerMobileButton()
+                        
+                        task.delay(0.02, function()
+                            isProcessingHit = false
+                        end)
+                    end
+                end
+            end
+        else
+            isProcessingHit = false
         end
-        if p.Character then
-            local charName = p.Character.Name:lower()
-            if charName:find("scourge") or charName:find("king") then
+    end)
+    table.insert(Connections, mobileLoop)
+
+else
+    -- PC: Original Instant Snap Logic
+    local boundPrompts = {}
+
+    local function isKingScourgeActive()
+        local now = os.clock()
+        if cachedKingScourge ~= nil and (now - lastKingCheck < 3) then
+            return cachedKingScourge
+        end
+        lastKingCheck = now
+
+        for _, p in ipairs(Players:GetPlayers()) do
+            local sel = tostring(p:GetAttribute("SelectedKiller") or ""):lower()
+            local role = tostring(p:GetAttribute("Role") or ""):lower()
+            if sel:find("scourge") or sel:find("king") or role:find("scourge") or role:find("king") then
+                cachedKingScourge = true
+                return true
+            end
+            if p.Character then
+                local charName = p.Character.Name:lower()
+                if charName:find("scourge") or charName:find("king") then
+                    cachedKingScourge = true
+                    return true
+                end
+            end
+        end
+
+        for _, obj in ipairs(Workspace:GetChildren()) do
+            local n = obj.Name:lower()
+            if n:find("scourge") or n:find("king") then
                 cachedKingScourge = true
                 return true
             end
         end
+
+        cachedKingScourge = false
+        return false
     end
 
-    for _, obj in ipairs(Workspace:GetChildren()) do
-        local n = obj.Name:lower()
-        if n:find("scourge") or n:find("king") then
-            cachedKingScourge = true
-            return true
-        end
-    end
-
-    cachedKingScourge = false
-    return false
-end
-
-local function getNearestGeneratorProgress()
-    local char = localPlayer.Character
-    local root = char and char:FindFirstChild("HumanoidRootPart")
-    if not root then return 0 end
-    
-    local nearestProg = 0
-    local closestDist = 15
-    
-    for gen, _ in pairs(activeGenerators) do
-        if gen and gen.Parent then
-            local part = gen.PrimaryPart or gen:FindFirstChild("RootPart") or gen:FindFirstChild("HitBox") or gen:FindFirstChildWhichIsA("BasePart")
-            if part then
-                local dist = (part.Position - root.Position).Magnitude
-                if dist <= closestDist then
-                    closestDist = dist
-                    nearestProg = getProgressPercentage(gen)
+    local function getNearestGeneratorProgress()
+        local char = localPlayer.Character
+        local root = char and char:FindFirstChild("HumanoidRootPart")
+        if not root then return 0 end
+        
+        local nearestProg = 0
+        local closestDist = 15
+        
+        for gen, _ in pairs(activeGenerators) do
+            if gen and gen.Parent then
+                local part = gen.PrimaryPart or gen:FindFirstChild("RootPart") or gen:FindFirstChild("HitBox") or gen:FindFirstChildWhichIsA("BasePart")
+                if part then
+                    local dist = (part.Position - root.Position).Magnitude
+                    if dist <= closestDist then
+                        closestDist = dist
+                        nearestProg = getProgressPercentage(gen)
+                    end
                 end
             end
         end
+        return nearestProg
     end
-    return nearestProg
-end
 
-local function setupSkillCheckGui(promptGui)
-    if not promptGui or boundPrompts[promptGui] then return end
-    boundPrompts[promptGui] = true
+    local function setupSkillCheckGui(promptGui)
+        if not promptGui or boundPrompts[promptGui] then return end
+        boundPrompts[promptGui] = true
 
-    task.spawn(function()
-        local check = promptGui:FindFirstChild("Check") or promptGui:WaitForChild("Check", 10)
-        local line = check and (check:FindFirstChild("Line") or check:WaitForChild("Line", 10))
-        local goal = check and (check:FindFirstChild("Goal") or check:WaitForChild("Goal", 10))
+        task.spawn(function()
+            local check = promptGui:FindFirstChild("Check") or promptGui:WaitForChild("Check", 10)
+            local line = check and (check:FindFirstChild("Line") or check:WaitForChild("Line", 10))
+            local goal = check and (check:FindFirstChild("Goal") or check:WaitForChild("Goal", 10))
 
-        if not (check and line and goal) then return end
+            if not (check and line and goal) then return end
 
-        local handledThisPrompt = false
+            local handledThisPrompt = false
 
-        local function safeProcess()
-            -- Verify the UI is actually visible and the feature is enabled
-            if not (check.Visible and promptGui.Enabled and Settings.AutoSkillCheck) then
-                handledThisPrompt = false
-                return
-            end
-
-            -- Prevent spam-firing on the same prompt instance
-            if handledThisPrompt then return end
-
-            local progress = getNearestGeneratorProgress()
-            local isKing = isKingScourgeActive()
-            local modeOffset = (Settings.SkillCheckMode == "great") and 5 or 12
-            local normalOffset = (Settings.SkillCheckMode == "great") and 109 or 130
-            local currentOffset = isKing and modeOffset or normalOffset
-
-            if progress < 89 then
-                -- INSTANT SNAP: Force the needle to the perfect rotation immediately (Bypasses travel time)
-                handledThisPrompt = true
-                line.Rotation = goal.Rotation + currentOffset
-                
-                task.spawn(function()
-                    TriggerMobileButton()
-                    task.wait(0.15)
+            local function safeProcess()
+                if not (check.Visible and promptGui.Enabled and Settings.AutoSkillCheck) then
                     handledThisPrompt = false
-                end)
-            else
-                -- NATURAL TIMING: Wait for the needle to reach the perfect zone naturally (King Scourge method)
-                local lineRot = line.AbsoluteRotation % 360
-                local goalRot = goal.AbsoluteRotation % 360
-                local targetAngle = (goalRot + currentOffset) % 360
-                local diff = math.abs((lineRot - targetAngle + 180) % 360 - 180)
+                    return
+                end
 
-                if diff <= 28 then
+                if handledThisPrompt then return end
+
+                local progress = getNearestGeneratorProgress()
+                local isKing = isKingScourgeActive()
+                local modeOffset = (Settings.SkillCheckMode == "great") and 5 or 12
+                local normalOffset = (Settings.SkillCheckMode == "great") and 109 or 130
+                local currentOffset = isKing and modeOffset or normalOffset
+
+                if progress < 89 then
                     handledThisPrompt = true
-                    line.Rotation = goal.Rotation + currentOffset -- Visual snap on hit
+                    line.Rotation = goal.Rotation + currentOffset
                     
                     task.spawn(function()
-                        TriggerMobileButton()
-                        task.wait(0.05)
+                        VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Space, false, game)
+                        task.wait(0.01)
+                        VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Space, false, game)
+                        task.wait(0.15)
                         handledThisPrompt = false
                     end)
+                else
+                    local lineRot = line.AbsoluteRotation % 360
+                    local goalRot = goal.AbsoluteRotation % 360
+                    local targetAngle = (goalRot + currentOffset) % 360
+                    local diff = math.abs((lineRot - targetAngle + 180) % 360 - 180)
+
+                    if diff <= 28 then
+                        handledThisPrompt = true
+                        line.Rotation = goal.Rotation + currentOffset
+                        
+                        task.spawn(function()
+                            VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Space, false, game)
+                            task.wait(0.01)
+                            VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Space, false, game)
+                            task.wait(0.05)
+                            handledThisPrompt = false
+                        end)
+                    end
                 end
             end
+
+            local c1 = promptGui:GetPropertyChangedSignal("Enabled"):Connect(safeProcess)
+            local c2 = check:GetPropertyChangedSignal("Visible"):Connect(safeProcess)
+            local c3 = goal:GetPropertyChangedSignal("Rotation"):Connect(function()
+                handledThisPrompt = false
+                safeProcess()
+            end)
+            local c4 = check:GetPropertyChangedSignal("Rotation"):Connect(safeProcess)
+
+            local renderConn
+            renderConn = RunService.RenderStepped:Connect(function()
+                if not promptGui.Parent then
+                    if renderConn then renderConn:Disconnect() end
+                    boundPrompts[promptGui] = nil
+                    return
+                end
+                safeProcess()
+            end)
+
+            table.insert(Connections, c1)
+            table.insert(Connections, c2)
+            table.insert(Connections, c3)
+            table.insert(Connections, c4)
+            table.insert(Connections, renderConn)
+
+            safeProcess()
+        end)
+    end
+
+    local existingPrompt = PlayerGui:FindFirstChild("SkillCheckPromptGui")
+    if existingPrompt then setupSkillCheckGui(existingPrompt) end
+
+    local cGuiAdd = PlayerGui.ChildAdded:Connect(function(child)
+        if child.Name == "SkillCheckPromptGui" or child.Name:lower():find("skillcheck") then
+            setupSkillCheckGui(child)
         end
-
-        -- Listeners: Trigger instantly or update on rotation
-        local c1 = promptGui:GetPropertyChangedSignal("Enabled"):Connect(safeProcess)
-        local c2 = check:GetPropertyChangedSignal("Visible"):Connect(safeProcess)
-        local c3 = goal:GetPropertyChangedSignal("Rotation"):Connect(function()
-            handledThisPrompt = false
-            safeProcess()
-        end)
-        local c4 = check:GetPropertyChangedSignal("Rotation"):Connect(safeProcess)
-
-        local renderConn
-        renderConn = RunService.RenderStepped:Connect(function()
-            if not promptGui.Parent then
-                if renderConn then renderConn:Disconnect() end
-                boundPrompts[promptGui] = nil
-                return
-            end
-            safeProcess()
-        end)
-
-        table.insert(Connections, c1)
-        table.insert(Connections, c2)
-        table.insert(Connections, c3)
-        table.insert(Connections, c4)
-        table.insert(Connections, renderConn)
-
-        -- Run once immediately in case the prompt was already visible when hooked
-        safeProcess()
     end)
+    table.insert(Connections, cGuiAdd)
 end
 
 -- Players
@@ -1293,10 +1359,12 @@ local cCharAdded = localPlayer.CharacterAdded:Connect(function(char)
     scanAllWorkspace()
     updateKillerLabel()
 
-    local pGui = localPlayer:FindFirstChild("PlayerGui") or PlayerGui
-    if pGui then
-        local prompt = pGui:FindFirstChild("SkillCheckPromptGui")
-        if prompt then setupSkillCheckGui(prompt) end
+    if not isMobile then
+        local pGui = localPlayer:FindFirstChild("PlayerGui") or PlayerGui
+        if pGui then
+            local prompt = pGui:FindFirstChild("SkillCheckPromptGui")
+            if prompt then setupSkillCheckGui(prompt) end
+        end
     end
 end)
 table.insert(Connections, cCharAdded)
@@ -1324,12 +1392,14 @@ local perkLoop = task.spawn(function()
 end)
 table.insert(Threads, perkLoop)
 
-local existingPrompt = PlayerGui:FindFirstChild("SkillCheckPromptGui")
-if existingPrompt then setupSkillCheckGui(existingPrompt) end
+if not isMobile then
+    local existingPrompt = PlayerGui:FindFirstChild("SkillCheckPromptGui")
+    if existingPrompt then setupSkillCheckGui(existingPrompt) end
 
-local cGuiAdd = PlayerGui.ChildAdded:Connect(function(child)
-    if child.Name == "SkillCheckPromptGui" or child.Name:lower():find("skillcheck") then
-        setupSkillCheckGui(child)
-    end
-end)
-table.insert(Connections, cGuiAdd)
+    local cGuiAdd = PlayerGui.ChildAdded:Connect(function(child)
+        if child.Name == "SkillCheckPromptGui" or child.Name:lower():find("skillcheck") then
+            setupSkillCheckGui(child)
+        end
+    end)
+    table.insert(Connections, cGuiAdd)
+end
